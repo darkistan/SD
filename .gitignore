@@ -41,6 +41,9 @@ desktop.ini
 # Cursor
 .cursor/
 
+# Reference project (not for upload)
+Исходній проект/
+
 # Backup files
 *.bak
 *.backup

@@ -1,0 +1,10 @@
+/* Custom styles for System заявок */
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+.user-badge {
+    padding: 0.5rem 1rem;
+}
+

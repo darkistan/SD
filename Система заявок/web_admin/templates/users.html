@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+
+{% block title %}Користувачі - Система заявок{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4"><i class="bi bi-people"></i> Управління користувачами</h1>
+    </div>
+</div>
+
+<!-- Запити на доступ -->
+{% if pending_requests %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card border-warning">
+            <div class="card-header bg-warning text-white">
+                <h5><i class="bi bi-clock"></i> Запити на доступ ({{ pending_requests|length }})</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>User ID</th>
+                                <th>Username</th>
+                                <th>Дата запиту</th>
+                                <th>Дії</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for req in pending_requests %}
+                            <tr>
+                                <td>{{ req.user_id }}</td>
+                                <td>@{{ req.username }}</td>
+                                <td>{{ req.timestamp.strftime('%d.%m.%Y %H:%M') if req.timestamp else 'Невідомо' }}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#approveModal{{ req.user_id }}">
+                                        <i class="bi bi-check"></i> Схвалити
+                                    </button>
+                                    <form method="POST" action="{{ url_for('deny_user', user_id=req.user_id) }}" style="display:inline;">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                        <button type="submit" class="btn btn-sm btn-danger">
+                                            <i class="bi bi-x"></i> Відхилити
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            
+                            <!-- Modal для схвалення -->
+                            <div class="modal fade" id="approveModal{{ req.user_id }}" tabindex="-1">
+                                <div class="modal-dialog">
+                                    <div class="modal-content">
+                                        <div class="modal-header">
+                                            <h5 class="modal-title">Схвалити користувача</h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                        </div>
+                                        <form method="POST" action="{{ url_for('approve_user', user_id=req.user_id) }}">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                            <div class="modal-body">
+                                                <div class="mb-3">
+                                                    <label class="form-label">Компанія</label>
+                                                    <select name="company_id" class="form-select">
+                                                        <option value="">Без компанії</option>
+                                                        {% for company in companies %}
+                                                        <option value="{{ company.id }}">{{ company.name }}</option>
+                                                        {% endfor %}
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
+                                                <button type="submit" class="btn btn-success">Схвалити</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Список користувачів -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-list"></i> Користувачі ({{ users|length }})</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>User ID</th>
+                                <th>Username</th>
+                                <th>ПІБ</th>
+                                <th>Роль</th>
+                                <th>Компанія</th>
+                                <th>Дії</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for user in users %}
+                            <tr>
+                                <td>{{ user.user_id }}</td>
+                                <td>@{{ user.username or 'Невідомо' }}</td>
+                                <td>{{ user.full_name or 'Не встановлено' }}</td>
+                                <td>
+                                    {% if user.role == 'admin' %}
+                                    <span class="badge bg-danger">Адмін</span>
+                                    {% else %}
+                                    <span class="badge bg-info">Користувач</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if user.company_id %}
+                                    {% for company in companies %}
+                                        {% if company.id == user.company_id %}
+                                        {{ company.name }}
+                                        {% endif %}
+                                    {% endfor %}
+                                    {% else %}
+                                    <span class="text-muted">Не встановлено</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#passwordModal{{ user.user_id }}">
+                                        <i class="bi bi-key"></i> Пароль
+                                    </button>
+                                    <button class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#companyModal{{ user.user_id }}">
+                                        <i class="bi bi-building"></i> Компанія
+                                    </button>
+                                </td>
+                            </tr>
+                            
+                            <!-- Modal для пароля -->
+                            <div class="modal fade" id="passwordModal{{ user.user_id }}" tabindex="-1">
+                                <div class="modal-dialog">
+                                    <div class="modal-content">
+                                        <div class="modal-header">
+                                            <h5 class="modal-title">Встановити пароль для @{{ user.username }}</h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                        </div>
+                                        <form method="POST" action="{{ url_for('set_user_password', user_id=user.user_id) }}">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                            <div class="modal-body">
+                                                <div class="mb-3">
+                                                    <label class="form-label">Новий пароль</label>
+                                                    <input type="password" name="password" class="form-control" required minlength="6">
+                                                    <small class="text-muted">Мінімум 6 символів</small>
+                                                </div>
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
+                                                <button type="submit" class="btn btn-primary">Встановити</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal для зміни компанії -->
+{% for user in users %}
+<div class="modal fade" id="companyModal{{ user.user_id }}" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Змінити компанію для @{{ user.username }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('update_user_company', user_id=user.user_id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Компанія</label>
+                        <select name="company_id" class="form-select">
+                            <option value="">Без компанії</option>
+                            {% for company in companies %}
+                            <option value="{{ company.id }}" {% if user.company_id == company.id %}selected{% endif %}>
+                                {{ company.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
+                    <button type="submit" class="btn btn-primary">Зберегти</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% endblock %}
+

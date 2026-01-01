@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block title %}Картриджі - Система заявок{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4"><i class="bi bi-cart"></i> Справочник картриджів</h1>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Додати картридж</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('add_cartridge') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <div class="row">
+                        <div class="col-md-5">
+                            <input type="text" name="name" class="form-control" placeholder="Назва картриджа" required>
+                        </div>
+                        <div class="col-md-4">
+                            <select name="service_mode" class="form-select">
+                                <option value="OUTSOURCE">Підрядник</option>
+                                <option value="IN_HOUSE">Внутрішнє</option>
+                                <option value="NOT_SUPPORTED">Не підтримується</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="bi bi-plus"></i> Додати
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Список картриджів ({{ cartridges|length }})</h5>
+            </div>
+            <div class="card-body">
+                {% if cartridges %}
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Назва</th>
+                                <th>Режим обслуговування</th>
+                                <th>Дії</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for cartridge in cartridges %}
+                            <tr>
+                                <td>{{ cartridge.id }}</td>
+                                <td><strong>{{ cartridge.name }}</strong></td>
+                                <td>
+                                    {% if cartridge.service_mode == 'IN_HOUSE' %}
+                                    <span class="badge bg-primary">Внутрішнє</span>
+                                    {% elif cartridge.service_mode == 'OUTSOURCE' %}
+                                    <span class="badge bg-warning">Підрядник</span>
+                                    {% else %}
+                                    <span class="badge bg-danger">Не підтримується</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#serviceModeModal{{ cartridge.id }}">
+                                        <i class="bi bi-pencil"></i> Змінити режим
+                                    </button>
+                                </td>
+                            </tr>
+                            
+                            <!-- Modal для зміни режиму -->
+                            <div class="modal fade" id="serviceModeModal{{ cartridge.id }}" tabindex="-1">
+                                <div class="modal-dialog">
+                                    <div class="modal-content">
+                                        <div class="modal-header">
+                                            <h5 class="modal-title">Змінити режим обслуговування</h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                        </div>
+                                        <form method="POST" action="{{ url_for('update_cartridge_service_mode', cartridge_id=cartridge.id) }}">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                            <div class="modal-body">
+                                                <div class="mb-3">
+                                                    <label class="form-label">Режим обслуговування</label>
+                                                    <select name="service_mode" class="form-select">
+                                                        <option value="OUTSOURCE" {% if cartridge.service_mode == 'OUTSOURCE' %}selected{% endif %}>Підрядник</option>
+                                                        <option value="IN_HOUSE" {% if cartridge.service_mode == 'IN_HOUSE' %}selected{% endif %}>Внутрішнє</option>
+                                                        <option value="NOT_SUPPORTED" {% if cartridge.service_mode == 'NOT_SUPPORTED' %}selected{% endif %}>Не підтримується</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
+                                                <button type="submit" class="btn btn-primary">Зберегти</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted">Картриджів поки немає.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

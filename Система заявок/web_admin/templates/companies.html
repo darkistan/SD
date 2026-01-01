@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Компанії - Система заявок{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4"><i class="bi bi-building"></i> Управління компаніями</h1>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Додати компанію</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('add_company') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <div class="row">
+                        <div class="col-md-8">
+                            <input type="text" name="name" class="form-control" placeholder="Назва компанії" required>
+                        </div>
+                        <div class="col-md-4">
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="bi bi-plus"></i> Додати
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Список компаній ({{ companies|length }})</h5>
+            </div>
+            <div class="card-body">
+                {% if companies %}
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Назва</th>
+                                <th>Дата створення</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for company in companies %}
+                            <tr>
+                                <td>{{ company.id }}</td>
+                                <td><strong>{{ company.name }}</strong></td>
+                                <td>{{ company.created_at.strftime('%d.%m.%Y') if company.created_at else 'Невідомо' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted">Компаній поки немає.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

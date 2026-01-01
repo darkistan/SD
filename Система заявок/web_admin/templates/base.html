@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="uk" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Система заявок{% endblock %}</title>
+    
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <!-- Custom CSS -->
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body data-bs-theme="dark">
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="{{url_for('dashboard')}}">
+                <i class="bi bi-ticket-perforated"></i> Система заявок
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{url_for('dashboard')}}">
+                            <i class="bi bi-speedometer2"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{url_for('tickets')}}">
+                            <i class="bi bi-list-ul"></i> Заявки
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{url_for('create_ticket')}}">
+                            <i class="bi bi-plus-circle"></i> Створити заявку
+                        </a>
+                    </li>
+                    {% if current_user.is_authenticated and current_user.is_admin %}
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="adminDropdown" role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-tools"></i> Адміністрування
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{{ url_for('users') }}">
+                                <i class="bi bi-people"></i> Користувачі
+                            </a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('companies') }}">
+                                <i class="bi bi-building"></i> Компанії
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('printers') }}">
+                                <i class="bi bi-printer"></i> Принтери
+                            </a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('cartridges') }}">
+                                <i class="bi bi-cart"></i> Картриджі
+                            </a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('contractors') }}">
+                                <i class="bi bi-briefcase"></i> Підрядники
+                            </a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('statuses') }}">
+                                <i class="bi bi-tags"></i> Статуси заявок
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('replacement_fund') }}">
+                                <i class="bi bi-box"></i> Підменний фонд
+                            </a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('reports') }}">
+                                <i class="bi bi-file-pdf"></i> Звіти та PDF
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('logs') }}">
+                                <i class="bi bi-file-text"></i> Логи системи
+                            </a></li>
+                        </ul>
+                    </li>
+                    {% endif %}
+                </ul>
+                <div class="d-flex align-items-center gap-2">
+                    {% if current_user.is_authenticated %}
+                    <span class="badge bg-light text-dark">
+                        <i class="bi bi-person-circle"></i> 
+                        {{ current_user.full_name or 'Користувач' }}
+                        {% if current_user.is_admin %}
+                            <span class="badge bg-danger ms-1">Адмін</span>
+                        {% endif %}
+                    </span>
+                    <button class="btn btn-outline-light btn-sm" id="theme-toggle" title="Перемкнути тему">
+                        <i class="bi bi-sun-fill" id="theme-icon"></i>
+                    </button>
+                    <a href="{{url_for('logout')}}" class="btn btn-outline-light btn-sm">
+                        <i class="bi bi-box-arrow-right"></i> Вийти
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Flash Messages -->
+    <div class="container mt-3">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </div>
+
+    <!-- Main Content -->
+    <div class="container-fluid mt-4">
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- Bootstrap 5 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Custom JS -->
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
+

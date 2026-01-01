@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block title %}Статуси заявок - Система заявок{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4"><i class="bi bi-tags"></i> Справочник статусів заявок</h1>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Додати статус</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('add_status') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <div class="row">
+                        <div class="col-md-3">
+                            <input type="text" name="code" class="form-control" placeholder="Код (напр. NEW)" required pattern="[A-Z_]+" title="Тільки великі літери та підкреслення">
+                        </div>
+                        <div class="col-md-4">
+                            <input type="text" name="name_ua" class="form-control" placeholder="Назва українською" required>
+                        </div>
+                        <div class="col-md-2">
+                            <input type="number" name="sort_order" class="form-control" placeholder="Порядок" value="0">
+                        </div>
+                        <div class="col-md-2">
+                            <div class="form-check mt-2">
+                                <input class="form-check-input" type="checkbox" name="is_active" value="1" id="isActive" checked>
+                                <label class="form-check-label" for="isActive">Активний</label>
+                            </div>
+                        </div>
+                        <div class="col-md-1">
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="bi bi-plus"></i> Додати
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Список статусів ({{ statuses|length }})</h5>
+            </div>
+            <div class="card-body">
+                {% if statuses %}
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Код</th>
+                                <th>Назва</th>
+                                <th>Порядок</th>
+                                <th>Статус</th>
+                                <th>Дії</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for status in statuses %}
+                            <tr>
+                                <td><code>{{ status.code }}</code></td>
+                                <td><strong>{{ status.name_ua }}</strong></td>
+                                <td>{{ status.sort_order }}</td>
+                                <td>
+                                    {% if status.is_active %}
+                                    <span class="badge bg-success">Активний</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">Неактивний</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#editModal{{ status.id }}">
+                                        <i class="bi bi-pencil"></i> Редагувати
+                                    </button>
+                                    <form method="POST" action="{{ url_for('delete_status', status_id=status.id) }}" style="display:inline;" onsubmit="return confirm('Ви впевнені, що хочете видалити статус {{ status.code }}?');">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                        <button type="submit" class="btn btn-sm btn-danger">
+                                            <i class="bi bi-trash"></i> Видалити
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            
+                            <!-- Modal для редагування -->
+                            <div class="modal fade" id="editModal{{ status.id }}" tabindex="-1">
+                                <div class="modal-dialog">
+                                    <div class="modal-content">
+                                        <div class="modal-header">
+                                            <h5 class="modal-title">Редагувати статус</h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                        </div>
+                                        <form method="POST" action="{{ url_for('edit_status', status_id=status.id) }}">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                            <div class="modal-body">
+                                                <div class="mb-3">
+                                                    <label class="form-label">Код</label>
+                                                    <input type="text" class="form-control" value="{{ status.code }}" readonly>
+                                                    <small class="text-muted">Код не можна змінити</small>
+                                                </div>
+                                                <div class="mb-3">
+                                                    <label class="form-label">Назва українською</label>
+                                                    <input type="text" name="name_ua" class="form-control" value="{{ status.name_ua }}" required>
+                                                </div>
+                                                <div class="mb-3">
+                                                    <label class="form-label">Порядок сортування</label>
+                                                    <input type="number" name="sort_order" class="form-control" value="{{ status.sort_order }}">
+                                                </div>
+                                                <div class="mb-3">
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="checkbox" name="is_active" value="1" id="isActive{{ status.id }}" {% if status.is_active %}checked{% endif %}>
+                                                        <label class="form-check-label" for="isActive{{ status.id }}">Активний</label>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
+                                                <button type="submit" class="btn btn-primary">Зберегти</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted">Статусів поки немає.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

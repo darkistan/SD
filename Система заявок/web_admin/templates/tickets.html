@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}Заявки - Система заявок{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="mb-0">
+                <i class="bi bi-list-ul"></i> Заявки
+            </h1>
+            <a href="{{ url_for('create_ticket') }}" class="btn btn-primary">
+                <i class="bi bi-plus"></i> Створити заявку
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <form method="GET" action="{{ url_for('tickets') }}" class="row g-3">
+                    {% if is_admin %}
+                    <div class="col-md-2">
+                        <label class="form-label">Компанія</label>
+                        <select name="company_id" class="form-select">
+                            <option value="">Всі</option>
+                            {% for company in companies %}
+                            <option value="{{ company.id }}" {% if selected_company_id == company.id %}selected{% endif %}>
+                                {{ company.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% endif %}
+                    <div class="col-md-2">
+                        <label class="form-label">Статус</label>
+                        <select name="status" class="form-select">
+                            <option value="">Всі</option>
+                            {% for status in all_statuses %}
+                            <option value="{{ status.code }}" {% if selected_status == status.code %}selected{% endif %}>
+                                {{ status.name_ua }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Тип</label>
+                        <select name="ticket_type" class="form-select">
+                            <option value="">Всі</option>
+                            <option value="REFILL" {% if selected_ticket_type == 'REFILL' %}selected{% endif %}>Заправка</option>
+                            <option value="REPAIR" {% if selected_ticket_type == 'REPAIR' %}selected{% endif %}>Ремонт</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">&nbsp;</label>
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="bi bi-search"></i> Фільтрувати
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                {% if tickets %}
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>№</th>
+                                <th>Тип</th>
+                                <th>Статус</th>
+                                <th>Компанія</th>
+                                <th>Користувач</th>
+                                <th>Дата створення</th>
+                                <th>Дії</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for ticket in tickets %}
+                            <tr>
+                                <td>#{{ ticket.id }}</td>
+                                <td>{{ ticket.ticket_type | ticket_type_ua }}</td>
+                                <td><span class="badge bg-info">{{ ticket.status | status_ua }}</span></td>
+                                <td>{{ ticket.company_name or 'Невідомо' }}</td>
+                                <td>{{ ticket.user_name or 'Невідомо' }}</td>
+                                <td>{{ ticket.created_at[:10] if ticket.created_at else 'Невідомо' }}</td>
+                                <td>
+                                    <a href="{{ url_for('ticket_detail', ticket_id=ticket.id) }}" class="btn btn-sm btn-primary">
+                                        <i class="bi bi-eye"></i> Переглянути
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted">Заявок не знайдено.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

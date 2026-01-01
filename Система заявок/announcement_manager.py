@@ -1,0 +1,193 @@
+"""
+Модуль для управління оголошеннями через БД
+Оголошення відправляються прямо в чат користувачам через Telegram Bot API
+"""
+import os
+import requests
+from datetime import datetime
+from typing import Dict, Any, Optional, List
+from dotenv import load_dotenv
+
+from database import get_session
+from models import Announcement, AnnouncementRecipient, User
+from logger import logger
+
+# Завантажуємо змінні середовища
+load_dotenv("config.env")
+
+# Telegram Bot API URL
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}" if TELEGRAM_BOT_TOKEN else None
+
+
+class AnnouncementManager:
+    """Клас для управління оголошеннями через БД"""
+    
+    def __init__(self):
+        """Ініціалізація менеджера оголошень"""
+        pass
+    
+    def send_announcement_to_users(
+        self, 
+        recipient_user_ids: List[int], 
+        content: str, 
+        priority: str,
+        author_id: int, 
+        author_username: str
+    ) -> Dict[str, Any]:
+        """
+        Відправка оголошення вибраним користувачам через Telegram Bot API
+        
+        Args:
+            recipient_user_ids: Список user_id отримувачів
+            content: Текст оголошення
+            priority: Пріоритет (normal, important, urgent)
+            author_id: ID автора
+            author_username: Username автора
+            
+        Returns:
+            Словник зі статистикою відправки: {'sent': int, 'failed': int, 'announcement_id': int}
+        """
+        if not TELEGRAM_BOT_TOKEN:
+            logger.log_error("TELEGRAM_BOT_TOKEN не встановлено в config.env")
+            return {'sent': 0, 'failed': len(recipient_user_ids), 'announcement_id': None}
+        
+        try:
+            with get_session() as session:
+                # Створюємо запис оголошення
+                announcement = Announcement(
+                    content=content,
+                    author_id=author_id,
+                    author_username=author_username,
+                    priority=priority,
+                    created_at=datetime.now(),
+                    updated_at=datetime.now(),
+                    sent_at=datetime.now(),
+                    recipient_count=len(recipient_user_ids)
+                )
+                session.add(announcement)
+                session.flush()
+                
+                # Формуємо повідомлення з пріоритетом
+                priority_emoji = {
+                    'urgent': '🔴 ТЕРМІНОВЕ',
+                    'important': '🟡 ВАЖЛИВЕ',
+                    'normal': '📋 Оголошення'
+                }.get(priority, '📋 Оголошення')
+                
+                message_text = f"{priority_emoji}\n\n{content}\n\n👤 Автор: @{author_username}"
+                
+                # Відправляємо повідомлення кожному отримувачу
+                sent_count = 0
+                failed_count = 0
+                
+                for recipient_id in recipient_user_ids:
+                    try:
+                        response = requests.post(
+                            f"{TELEGRAM_API_URL}/sendMessage",
+                            json={
+                                'chat_id': recipient_id,
+                                'text': message_text,
+                                'parse_mode': 'HTML'
+                            },
+                            timeout=10
+                        )
+                        
+                        if response.status_code == 200:
+                            status = 'sent'
+                            sent_count += 1
+                        else:
+                            try:
+                                error_data = response.json()
+                                error_code = error_data.get('error_code', 0)
+                                error_description = error_data.get('description', 'Unknown error')
+                            except (ValueError, KeyError):
+                                error_code = response.status_code
+                                error_description = response.text[:100] if response.text else 'Unknown error'
+                            
+                            if error_code == 403:
+                                status = 'blocked'
+                            elif error_code == 400:
+                                error_desc_lower = error_description.lower()
+                                if 'chat not found' in error_desc_lower or 'chat_id is empty' in error_desc_lower:
+                                    status = 'blocked'
+                                else:
+                                    status = 'failed'
+                            else:
+                                status = 'failed'
+                            
+                            failed_count += 1
+                            
+                            if status == 'failed':
+                                logger.log_warning(f"Помилка відправки оголошення {announcement.id} користувачу {recipient_id}: {error_description}")
+                        
+                        recipient = AnnouncementRecipient(
+                            announcement_id=announcement.id,
+                            recipient_user_id=recipient_id,
+                            sent_at=datetime.now(),
+                            status=status
+                        )
+                        session.add(recipient)
+                        
+                    except requests.exceptions.RequestException as e:
+                        failed_count += 1
+                        status = 'failed'
+                        logger.log_error(f"Помилка відправки оголошення {announcement.id} користувачу {recipient_id}: {e}")
+                        
+                        recipient = AnnouncementRecipient(
+                            announcement_id=announcement.id,
+                            recipient_user_id=recipient_id,
+                            sent_at=datetime.now(),
+                            status=status
+                        )
+                        session.add(recipient)
+                
+                announcement.recipient_count = sent_count
+                session.commit()
+                
+                logger.log_info(f"Оголошення {announcement.id} відправлено: {sent_count} успішно, {failed_count} помилок")
+                
+                return {
+                    'sent': sent_count,
+                    'failed': failed_count,
+                    'announcement_id': announcement.id
+                }
+            
+        except Exception as e:
+            logger.log_error(f"Помилка відправки оголошення: {e}")
+            return {'sent': 0, 'failed': len(recipient_user_ids), 'announcement_id': None}
+    
+    def get_announcement_history(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Отримання історії відправлених оголошень"""
+        try:
+            with get_session() as session:
+                announcements = session.query(Announcement).order_by(
+                    Announcement.sent_at.desc()
+                ).limit(limit).all()
+                
+                result = []
+                for ann in announcements:
+                    result.append({
+                        'id': ann.id,
+                        'content': ann.content[:100] + '...' if len(ann.content) > 100 else ann.content,
+                        'author_username': ann.author_username,
+                        'priority': ann.priority,
+                        'sent_at': ann.sent_at if ann.sent_at else None,
+                        'recipient_count': ann.recipient_count or 0,
+                        'created_at': ann.created_at
+                    })
+                
+                return result
+        except Exception as e:
+            logger.log_error(f"Помилка отримання історії оголошень: {e}")
+            return []
+
+
+# Глобальний екземпляр
+announcement_manager = AnnouncementManager()
+
+
+def get_announcement_manager() -> AnnouncementManager:
+    """Отримання глобального менеджера оголошень"""
+    return announcement_manager
+

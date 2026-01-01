@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block title %}Принтери - Система заявок{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <h1 class="mb-4"><i class="bi bi-printer"></i> Справочник принтерів</h1>
+    </div>
+    <div class="col-md-4 text-end">
+        <form method="POST" action="{{ url_for('import_printer_compatibility') }}" style="display:inline;" onsubmit="return confirm('Імпортувати сумісність принтерів та картриджів з бази даних?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <button type="submit" class="btn btn-info">
+                <i class="bi bi-upload"></i> Імпортувати сумісність
+            </button>
+        </form>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Додати принтер</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('add_printer') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <div class="row">
+                        <div class="col-md-5">
+                            <input type="text" name="model" class="form-control" placeholder="Модель принтера" required>
+                        </div>
+                        <div class="col-md-5">
+                            <input type="text" name="description" class="form-control" placeholder="Опис (опціонально)">
+                        </div>
+                        <div class="col-md-2">
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="bi bi-plus"></i> Додати
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Список принтерів ({{ printers|length }})</h5>
+            </div>
+            <div class="card-body">
+                {% if printers %}
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Модель</th>
+                                <th>Опис</th>
+                                <th>Статус</th>
+                                <th>Дії</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for printer in printers %}
+                            <tr>
+                                <td>{{ printer.id }}</td>
+                                <td><strong>{{ printer.model }}</strong></td>
+                                <td>{{ printer.description or '-' }}</td>
+                                <td>
+                                    {% if printer.is_active %}
+                                    <span class="badge bg-success">Активний</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">Неактивний</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <a href="{{ url_for('printer_compatibility', printer_id=printer.id) }}" class="btn btn-sm btn-info">
+                                        <i class="bi bi-link"></i> Сумісність
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted">Принтерів поки немає.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

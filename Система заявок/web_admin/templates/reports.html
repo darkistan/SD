@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block title %}Звіти та PDF - Система заявок{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4"><i class="bi bi-file-pdf"></i> Звіти та PDF</h1>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6 mb-3">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Звіт по заявках</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('generate_pdf_report') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="report_type" value="tickets_report"/>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Початкова дата</label>
+                        <input type="date" name="start_date" class="form-control">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Кінцева дата</label>
+                        <input type="date" name="end_date" class="form-control">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Компанія</label>
+                        <select name="company_id" class="form-select">
+                            <option value="">Всі компанії</option>
+                            {% for company in companies %}
+                            <option value="{{ company.id }}">{{ company.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-file-pdf"></i> Згенерувати PDF
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6 mb-3">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Заявка підряднику на заправку</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('generate_pdf_report') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="report_type" value="contractor_refill"/>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Підрядник <span class="text-danger">*</span></label>
+                        <select name="contractor_id" class="form-select" required>
+                            <option value="">-- Виберіть підрядника --</option>
+                            {% for contractor in contractors %}
+                            <option value="{{ contractor.id }}">{{ contractor.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Компанія</label>
+                        <select name="company_id" class="form-select">
+                            <option value="">Всі компанії</option>
+                            {% for company in companies %}
+                            <option value="{{ company.id }}">{{ company.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-file-pdf"></i> Згенерувати PDF
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6 mb-3">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Заявка підряднику на ремонт</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('generate_pdf_report') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="report_type" value="contractor_repair"/>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Підрядник <span class="text-danger">*</span></label>
+                        <select name="contractor_id" class="form-select" required>
+                            <option value="">-- Виберіть підрядника --</option>
+                            {% for contractor in contractors %}
+                            <option value="{{ contractor.id }}">{{ contractor.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Компанія</label>
+                        <select name="company_id" class="form-select">
+                            <option value="">Всі компанії</option>
+                            {% for company in companies %}
+                            <option value="{{ company.id }}">{{ company.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-file-pdf"></i> Згенерувати PDF
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

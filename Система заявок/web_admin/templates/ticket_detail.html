@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+
+{% block title %}Заявка #{{ ticket['id'] }} - Система заявок{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="bi bi-ticket-perforated"></i> Заявка #{{ ticket['id'] }}
+        </h1>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="mb-0">Інформація про заявку</h5>
+            </div>
+            <div class="card-body">
+                <table class="table">
+                    <tr>
+                        <th>Тип:</th>
+                        <td>{{ ticket.ticket_type | ticket_type_ua }}</td>
+                    </tr>
+                    <tr>
+                        <th>Статус:</th>
+                        <td><span class="badge bg-info">{{ ticket.status | status_ua }}</span></td>
+                    </tr>
+                    <tr>
+                        <th>Пріоритет:</th>
+                        <td>{{ ticket.priority | priority_ua }}</td>
+                    </tr>
+                    <tr>
+                        <th>Компанія:</th>
+                        <td>{{ ticket.company_name or 'Невідомо' }}</td>
+                    </tr>
+                    <tr>
+                        <th>Користувач:</th>
+                        <td>{{ ticket.user_name or 'Невідомо' }}</td>
+                    </tr>
+                    <tr>
+                        <th>Дата створення:</th>
+                        <td>{{ ticket.created_at[:19] if ticket.created_at else 'Невідомо' }}</td>
+                    </tr>
+                    {% if ticket.comment %}
+                    <tr>
+                        <th>Коментар користувача:</th>
+                        <td>{{ ticket.comment }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if ticket.admin_comment %}
+                    <tr>
+                        <th>Коментар адміна:</th>
+                        <td>{{ ticket.admin_comment }}</td>
+                    </tr>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="mb-0">Позиції заявки</h5>
+            </div>
+            <div class="card-body">
+                {% if ticket['items'] %}
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Тип / Модель</th>
+                            <th>Кількість</th>
+                            <th>Статус</th>
+                            {% if current_user.is_admin %}
+                            <th>Результат</th>
+                            <th>Дії</th>
+                            {% endif %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in ticket['items'] %}
+                        <tr {% if item.result == 'DEFECT' %}class="table-danger"{% endif %}>
+                            <td>
+                                {{ item.item_type | item_type_ua }}
+                                {% if item.printer_name %}
+                                    <br><small class="text-muted">{{ item.printer_name }}</small>
+                                {% elif item.cartridge_name %}
+                                    <br><small class="text-muted">{{ item.cartridge_name }}</small>
+                                {% endif %}
+                            </td>
+                            <td>{{ item.quantity }}</td>
+                            <td>
+                                {% if item.sent_to_contractor %}
+                                <span class="badge bg-success">Відправлено</span>
+                                {% else %}
+                                <span class="badge bg-warning">В очікуванні</span>
+                                {% endif %}
+                            </td>
+                            {% if current_user.is_admin %}
+                            <td>
+                                {% if item.result == 'DEFECT' %}
+                                <span class="badge bg-danger">Брак</span>
+                                {% elif item.result == 'OK' %}
+                                <span class="badge bg-success">OK</span>
+                                {% else %}
+                                <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if item.sent_to_contractor and not item.result %}
+                                <form method="POST" action="{{ url_for('mark_ticket_item_ok', ticket_id=ticket['id']) }}" style="display:inline;">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                    <input type="hidden" name="item_id" value="{{ item.id }}"/>
+                                    <button type="submit" class="btn btn-sm btn-success">
+                                        <i class="bi bi-check"></i> OK
+                                    </button>
+                                </form>
+                                <button class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#defectModal{{ item.id }}">
+                                    <i class="bi bi-exclamation-triangle"></i> Брак
+                                </button>
+                                {% endif %}
+                            </td>
+                            {% endif %}
+                        </tr>
+                        
+                        {% if current_user.is_admin and item.sent_to_contractor and not item.result %}
+                        <!-- Modal для фіксації браку -->
+                        <div class="modal fade" id="defectModal{{ item.id }}" tabindex="-1">
+                            <div class="modal-dialog">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title">Фіксація браку</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <form method="POST" action="{{ url_for('mark_ticket_item_defect', ticket_id=ticket['id']) }}">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                        <input type="hidden" name="item_id" value="{{ item.id }}"/>
+                                        <div class="modal-body">
+                                            <div class="mb-3">
+                                                <label class="form-label">Опис браку <span class="text-danger">*</span></label>
+                                                <textarea name="defect_comment" class="form-control" rows="3" required placeholder="Опишіть брак..."></textarea>
+                                            </div>
+                                            <div class="mb-3">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" name="create_rework" value="1" id="createRework{{ item.id }}" checked>
+                                                    <label class="form-check-label" for="createRework{{ item.id }}">
+                                                        Створити заявку на переробку (REWORK)
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="modal-footer">
+                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
+                                            <button type="submit" class="btn btn-danger">Зафіксувати брак</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p class="text-muted">Позицій немає.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if logs %}
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Історія змін</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Дата</th>
+                                <th>Зміна</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for log in logs %}
+                            <tr>
+                                <td>{{ log.timestamp.strftime('%d.%m.%Y %H:%M') if log.timestamp else 'Невідомо' }}</td>
+                                <td>{{ log.message }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    {% if current_user.is_admin %}
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Дії адміністратора</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('change_ticket_status', ticket_id=ticket['id']) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Змінити статус</label>
+                        <select name="status" class="form-select" required>
+                            {% for status in all_statuses %}
+                            <option value="{{ status.code }}" {% if ticket.status == status.code %}selected{% endif %}>
+                                {{ status.name_ua }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Коментар адміна</label>
+                        <textarea name="admin_comment" class="form-control" rows="3" placeholder="Коментар до зміни статусу (опціонально)"></textarea>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary w-100 mb-3">
+                        <i class="bi bi-check"></i> Змінити статус
+                    </button>
+                </form>
+                
+                <hr>
+                
+                <form method="POST" action="{{ url_for('delete_ticket', ticket_id=ticket['id']) }}" 
+                      onsubmit="return confirm('Ви впевнені, що хочете видалити заявку #{{ ticket['id'] }}? Цю дію неможливо скасувати.');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <button type="submit" class="btn btn-danger w-100">
+                        <i class="bi bi-trash"></i> Видалити заявку
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+

@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}Підрядники - Система заявок{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4"><i class="bi bi-briefcase"></i> Управління підрядниками</h1>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Додати підрядника</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('add_contractor') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <input type="text" name="name" class="form-control" placeholder="Назва підрядника" required>
+                        </div>
+                        <div class="col-md-4">
+                            <input type="text" name="contact_info" class="form-control" placeholder="Контактна інформація">
+                        </div>
+                        <div class="col-md-3">
+                            <select name="service_types" class="form-select">
+                                <option value="BOTH">Заправка та ремонт</option>
+                                <option value="REFILL">Тільки заправка</option>
+                                <option value="REPAIR">Тільки ремонт</option>
+                            </select>
+                        </div>
+                        <div class="col-md-1">
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="bi bi-plus"></i>
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Список підрядників ({{ contractors|length }})</h5>
+            </div>
+            <div class="card-body">
+                {% if contractors %}
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Назва</th>
+                                <th>Контакти</th>
+                                <th>Типи послуг</th>
+                                <th>Статус</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for contractor in contractors %}
+                            <tr>
+                                <td>{{ contractor.id }}</td>
+                                <td><strong>{{ contractor.name }}</strong></td>
+                                <td>{{ contractor.contact_info or '-' }}</td>
+                                <td>
+                                    {% if contractor.service_types == 'BOTH' %}
+                                    <span class="badge bg-primary">Заправка та ремонт</span>
+                                    {% elif contractor.service_types == 'REFILL' %}
+                                    <span class="badge bg-info">Заправка</span>
+                                    {% else %}
+                                    <span class="badge bg-warning">Ремонт</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if contractor.is_active %}
+                                    <span class="badge bg-success">Активний</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">Неактивний</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted">Підрядників поки немає.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

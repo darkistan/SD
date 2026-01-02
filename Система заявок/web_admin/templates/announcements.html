@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}Оголошення - Система заявок{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-md-8">
+        <h1><i class="bi bi-megaphone"></i> Управління оголошеннями</h1>
+        <p class="text-muted">Створюйте та відправляйте оголошення користувачам прямо в Telegram</p>
+    </div>
+    <div class="col-md-4 text-end">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createAnnouncementModal">
+            <i class="bi bi-plus-circle"></i> Створити оголошення
+        </button>
+    </div>
+</div>
+
+<!-- Список відправлених оголошень -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="bi bi-list"></i> Історія відправлених оголошень ({{announcements|length}})</h5>
+            </div>
+            <div class="card-body">
+                {% if announcements %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Зміст</th>
+                                <th>Пріоритет</th>
+                                <th>Автор</th>
+                                <th>Час відправки</th>
+                                <th>Отримувачів</th>
+                                <th>Дії</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for ann in announcements %}
+                            <tr>
+                                <td>{{ann['id']}}</td>
+                                <td>{% if ann['content']|length > 100 %}{{ann['content'][:100]}}...{% else %}{{ann['content']}}{% endif %}</td>
+                                <td>
+                                    <span class="badge {% if ann['priority'] == 'urgent' %}bg-danger{% elif ann['priority'] == 'important' %}bg-warning{% else %}bg-secondary{% endif %}">
+                                        {% if ann['priority'] == 'urgent' %}Термінове
+                                        {% elif ann['priority'] == 'important' %}Важливе
+                                        {% else %}Звичайне
+                                        {% endif %}
+                                    </span>
+                                </td>
+                                <td>@{{ann['author_username']}}</td>
+                                <td>
+                                    {% if ann['sent_at'] %}
+                                        {% if ann['sent_at'] is string %}
+                                            {{ann['sent_at']}}
+                                        {% else %}
+                                            {{ann['sent_at'].strftime('%d.%m.%Y %H:%M')}}
+                                        {% endif %}
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <span class="badge bg-info">{{ann['recipient_count']}}</span>
+                                </td>
+                                <td>
+                                    <a href="{{url_for('announcement_recipients', ann_id=ann['id'])}}" class="btn btn-sm btn-primary">
+                                        <i class="bi bi-people"></i> Отримувачі
+                                    </a>
+                                    <form method="POST" action="{{url_for('delete_announcement', ann_id=ann['id'])}}" style="display:inline;" onsubmit="return confirm('Видалити оголошення?');">
+                                        <input type="hidden" name="csrf_token" value="{{csrf_token()}}"/>
+                                        <button type="submit" class="btn btn-sm btn-danger">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted">Оголошень немає.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal створення оголошення -->
+<div class="modal fade" id="createAnnouncementModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Створити та відправити оголошення</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{url_for('create_announcement')}}">
+                <input type="hidden" name="csrf_token" value="{{csrf_token()}}"/>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Зміст оголошення <span class="text-danger">*</span></label>
+                        <textarea class="form-control" name="content" rows="8" required placeholder="Введіть текст оголошення..."></textarea>
+                        <small class="text-muted">Підтримується HTML форматування</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Пріоритет</label>
+                        <select class="form-select" name="priority">
+                            <option value="normal">Звичайне</option>
+                            <option value="important">Важливе</option>
+                            <option value="urgent">Термінове</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="send_to_all" id="send_to_all" onchange="toggleRecipients()">
+                            <label class="form-check-label" for="send_to_all">
+                                Відправити всім користувачам з увімкненими оповіщеннями
+                            </label>
+                        </div>
+                    </div>
+                    <div class="mb-3" id="recipients_select">
+                        <label class="form-label">Виберіть отримувачів</label>
+                        {% if users %}
+                        <select class="form-select" name="recipient_ids" multiple size="10" id="recipient_ids" required>
+                            {% for user in users %}
+                            <option value="{{user['user_id']}}">
+                                {% if user.get('full_name') %}
+                                    {{user['full_name']}} (@{{user['username']}})
+                                {% else %}
+                                    @{{user['username']}}
+                                {% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">Утримуйте Ctrl (Cmd на Mac) для вибору кількох користувачів</small>
+                        {% else %}
+                        <div class="alert alert-warning">
+                            <i class="bi bi-exclamation-triangle"></i> Немає користувачів для вибору. Спочатку додайте користувачів на сторінці "Користувачі".
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-send"></i> Відправити
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function toggleRecipients() {
+    const sendToAll = document.getElementById('send_to_all').checked;
+    const recipientsSelect = document.getElementById('recipients_select');
+    const recipientIds = document.getElementById('recipient_ids');
+    
+    if (sendToAll) {
+        recipientsSelect.style.display = 'none';
+        if (recipientIds) {
+            recipientIds.required = false;
+            // Знімаємо вибір з усіх опцій
+            Array.from(recipientIds.options).forEach(option => option.selected = false);
+        }
+    } else {
+        recipientsSelect.style.display = 'block';
+        if (recipientIds) {
+            recipientIds.required = true;
+        }
+    }
+}
+
+// Перевірка при завантаженні сторінки
+document.addEventListener('DOMContentLoaded', function() {
+    const recipientIds = document.getElementById('recipient_ids');
+    if (recipientIds && recipientIds.options.length === 0) {
+        console.warn('Список користувачів порожній');
+    }
+});
+</script>
+{% endblock %}
+

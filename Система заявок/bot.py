@@ -28,6 +28,7 @@ from models import User, Company
 from ticket_manager import get_ticket_manager
 from printer_manager import get_printer_manager
 from status_manager import get_status_manager
+from poll_manager import get_poll_manager
 from datetime import datetime
 
 # Завантажуємо змінні середовища
@@ -254,6 +255,28 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await query.answer()
     
     user_id = query.from_user.id
+    
+    # Обробка голосування в опитуваннях (не проходить через CSRF)
+    if query.data and query.data.startswith("poll_vote_"):
+        # Формат: poll_vote_{poll_id}_{option_id}
+        try:
+            parts = query.data.split("_")
+            if len(parts) == 4:
+                poll_id = int(parts[2])
+                option_id = int(parts[3])
+                
+                poll_manager = get_poll_manager()
+                success = poll_manager.add_poll_response(poll_id, option_id, user_id)
+                
+                if success:
+                    await query.answer("✅ Ваш голос зафіксовано!", show_alert=False)
+                else:
+                    await query.answer("❌ Помилка. Опитування може бути закрите або не знайдене.", show_alert=True)
+                return
+        except (ValueError, IndexError) as e:
+            logger.log_error(f"Помилка обробки голосування в опитуванні: {e}")
+            await query.answer("❌ Помилка обробки голосування.", show_alert=True)
+            return
     
     # Витягуємо callback дані з CSRF перевіркою
     callback_data = csrf_manager.extract_callback_data(user_id, query.data)

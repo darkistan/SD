@@ -1,0 +1,259 @@
+{% extends "base.html" %}
+
+{% block title %}Опитування #{{ poll.id }} - Система заявок{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="mb-0">
+                <i class="bi bi-clipboard-check"></i> Опитування #{{ poll.id }}
+            </h1>
+            <a href="{{ url_for('polls') }}" class="btn btn-secondary">
+                <i class="bi bi-arrow-left"></i> Назад до списку
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Інформація про опитування -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-info-circle"></i> Інформація про опитування</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>Питання:</strong><br>{{ poll.question }}</p>
+                        <p><strong>Автор:</strong> {{ results.author_name }}</p>
+                        <p><strong>Створено:</strong> 
+                            {% if poll.created_at %}
+                                {% if poll.created_at is string %}
+                                    {{ poll.created_at }}
+                                {% else %}
+                                    {{ poll.created_at.strftime('%d.%m.%Y %H:%M') }}
+                                {% endif %}
+                            {% else %}
+                                Невідомо
+                            {% endif %}
+                        </p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Статус:</strong> 
+                            {% if poll.is_closed %}
+                            <span class="badge bg-secondary">Закрите</span>
+                            {% else %}
+                            <span class="badge bg-success">Активне</span>
+                            {% endif %}
+                            {% if poll.is_anonymous %}
+                            <span class="badge bg-info ms-2">Анонімне</span>
+                            {% endif %}
+                        </p>
+                        <p><strong>Відправлено користувачам:</strong> 
+                            {% if poll.sent_to_users %}
+                            <span class="badge bg-success">Так</span>
+                            {% else %}
+                            <span class="badge bg-warning">Ні</span>
+                            {% endif %}
+                        </p>
+                        {% if poll.expires_at %}
+                        <p><strong>Термін дії:</strong> 
+                            {% if poll.expires_at is string %}
+                                {{ poll.expires_at }}
+                            {% else %}
+                                {{ poll.expires_at.strftime('%d.%m.%Y %H:%M') }}
+                            {% endif %}
+                        </p>
+                        {% endif %}
+                        {% if poll.closed_at %}
+                        <p><strong>Закрито:</strong> 
+                            {% if poll.closed_at is string %}
+                                {{ poll.closed_at }}
+                            {% else %}
+                                {{ poll.closed_at.strftime('%d.%m.%Y %H:%M') }}
+                            {% endif %}
+                        </p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Результати опитування -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-bar-chart"></i> Результати опитування</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <strong>Всього голосів:</strong> <span class="badge bg-primary">{{ results.total_votes }}</span>
+                </div>
+                
+                {% if results.results %}
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Варіант відповіді</th>
+                                <th>Голосів</th>
+                                <th>Відсоток</th>
+                                <th>Візуалізація</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for result in results.results %}
+                            <tr>
+                                <td><strong>{{ result.option_text }}</strong></td>
+                                <td>
+                                    <span class="badge bg-info">{{ result.votes }}</span>
+                                </td>
+                                <td>
+                                    <span class="badge bg-primary">{{ result.percentage }}%</span>
+                                </td>
+                                <td>
+                                    <div class="progress" style="height: 25px;">
+                                        <div class="progress-bar" role="progressbar" style="width: {{ result.percentage }}%" aria-valuenow="{{ result.percentage }}" aria-valuemin="0" aria-valuemax="100">
+                                            {{ result.percentage }}%
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted">Поки немає відповідей.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Дії -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-gear"></i> Дії</h5>
+            </div>
+            <div class="card-body">
+                <div class="btn-group" role="group">
+                    {% if not poll.sent_to_users %}
+                    <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#sendPollModal">
+                        <i class="bi bi-send"></i> Відправити користувачам
+                    </button>
+                    {% endif %}
+                    
+                    {% if not poll.is_closed %}
+                    <form method="POST" action="{{ url_for('close_poll', poll_id=poll.id) }}" style="display:inline;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <button type="submit" class="btn btn-warning" onclick="return confirm('Закрити опитування? Після закриття редагування буде неможливе.');">
+                            <i class="bi bi-lock"></i> Закрити опитування
+                        </button>
+                    </form>
+                    {% endif %}
+                    
+                    {% if poll.is_closed and not poll.report_sent %}
+                    <form method="POST" action="{{ url_for('send_poll_report', poll_id=poll.id) }}" style="display:inline;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <button type="submit" class="btn btn-info" onclick="return confirm('Відправити звіт з результатами всім користувачам?');">
+                            <i class="bi bi-file-earmark-text"></i> Відправити звіт
+                        </button>
+                    </form>
+                    {% endif %}
+                    
+                    <form method="POST" action="{{ url_for('delete_poll', poll_id=poll.id) }}" style="display:inline;" onsubmit="return confirm('Ви впевнені, що хочете видалити це опитування? Всі дані будуть втрачені.');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <button type="submit" class="btn btn-danger">
+                            <i class="bi bi-trash"></i> Видалити
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal відправки опитування -->
+{% if not poll.sent_to_users %}
+<div class="modal fade" id="sendPollModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-send"></i> Відправити опитування користувачам</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('send_poll', poll_id=poll.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="send_to_all" id="send_to_all_poll" onchange="togglePollRecipients()">
+                            <label class="form-check-label" for="send_to_all_poll">
+                                Відправити всім користувачам з Telegram
+                            </label>
+                        </div>
+                    </div>
+                    <div class="mb-3" id="poll_recipients_select">
+                        <label class="form-label">Виберіть отримувачів</label>
+                        {% if users %}
+                        <select class="form-select" name="recipient_ids" multiple size="10" id="poll_recipient_ids" required>
+                            {% for user in users %}
+                            <option value="{{user['user_id']}}">
+                                {% if user.get('full_name') %}
+                                    {{user['full_name']}} (@{{user['username']}})
+                                {% else %}
+                                    @{{user['username']}}
+                                {% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">Утримуйте Ctrl (Cmd на Mac) для вибору кількох користувачів</small>
+                        {% else %}
+                        <div class="alert alert-warning">
+                            <i class="bi bi-exclamation-triangle"></i> Немає користувачів для вибору.
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="bi bi-send"></i> Відправити
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function togglePollRecipients() {
+    const sendToAll = document.getElementById('send_to_all_poll').checked;
+    const recipientsSelect = document.getElementById('poll_recipients_select');
+    const recipientIds = document.getElementById('poll_recipient_ids');
+    
+    if (sendToAll) {
+        recipientsSelect.style.display = 'none';
+        if (recipientIds) {
+            recipientIds.required = false;
+            Array.from(recipientIds.options).forEach(option => option.selected = false);
+        }
+    } else {
+        recipientsSelect.style.display = 'block';
+        if (recipientIds) {
+            recipientIds.required = true;
+        }
+    }
+}
+</script>
+{% endif %}
+{% endblock %}
+

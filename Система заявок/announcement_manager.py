@@ -181,6 +181,84 @@ class AnnouncementManager:
         except Exception as e:
             logger.log_error(f"Помилка отримання історії оголошень: {e}")
             return []
+    
+    def get_announcement_recipients(self, announcement_id: int) -> List[Dict[str, Any]]:
+        """
+        Отримання списку отримувачів конкретного оголошення
+        
+        Args:
+            announcement_id: ID оголошення
+            
+        Returns:
+            Список отримувачів зі статусом відправки
+        """
+        try:
+            with get_session() as session:
+                recipients = session.query(AnnouncementRecipient, User).join(
+                    User, AnnouncementRecipient.recipient_user_id == User.user_id
+                ).filter(
+                    AnnouncementRecipient.announcement_id == announcement_id
+                ).all()
+                
+                result = []
+                for recipient, user in recipients:
+                    result.append({
+                        'recipient_user_id': recipient.recipient_user_id,
+                        'username': user.username,
+                        'full_name': user.full_name,
+                        'sent_at': recipient.sent_at,
+                        'status': recipient.status
+                    })
+                
+                return result
+        except Exception as e:
+            logger.log_error(f"Помилка отримання отримувачів оголошення {announcement_id}: {e}")
+            return []
+    
+    def delete_announcement(self, announcement_id: int) -> bool:
+        """Видалення оголошення та всіх пов'язаних записів"""
+        try:
+            with get_session() as session:
+                # Видаляємо отримувачів
+                session.query(AnnouncementRecipient).filter(
+                    AnnouncementRecipient.announcement_id == announcement_id
+                ).delete()
+                
+                # Видаляємо оголошення
+                announcement = session.query(Announcement).filter(Announcement.id == announcement_id).first()
+                if announcement:
+                    session.delete(announcement)
+                    session.commit()
+                logger.log_info(f"Видалено оголошення {announcement_id}")
+                return True
+            return False
+        except Exception as e:
+            logger.log_error(f"Помилка видалення оголошення: {e}")
+            return False
+    
+    def get_all_users(self) -> List[Dict[str, Any]]:
+        """
+        Отримання списку всіх користувачів
+        
+        Returns:
+            Список користувачів з user_id, username та full_name
+        """
+        try:
+            with get_session() as session:
+                users = session.query(User).all()
+                
+                result = []
+                for user in users:
+                    result.append({
+                        'user_id': user.user_id,
+                        'username': user.username or f"user_{user.user_id}",
+                        'full_name': user.full_name
+                    })
+                
+                return result
+        except Exception as e:
+            logger.log_error(f"Помилка отримання списку користувачів: {e}")
+            return []
 
 
 # Глобальний екземпляр

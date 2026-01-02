@@ -19,12 +19,14 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from database import init_database, get_session
-from models import User, Company, Ticket, TicketItem, ActiveSession, Log, PendingRequest, Printer, CartridgeType, PrinterCartridgeCompatibility, Contractor, ReplacementFund, TicketStatus
+from models import User, Company, Ticket, TicketItem, ActiveSession, Log, PendingRequest, Printer, CartridgeType, PrinterCartridgeCompatibility, Contractor, ReplacementFund, TicketStatus, Poll, PollOption, PollResponse, Announcement, AnnouncementRecipient
 from ticket_manager import get_ticket_manager
 from printer_manager import get_printer_manager
 from replacement_fund_manager import get_replacement_fund_manager
 from pdf_report_manager import get_pdf_report_manager
 from status_manager import get_status_manager
+from poll_manager import get_poll_manager
+from announcement_manager import get_announcement_manager
 from auth import auth_manager
 from logger import logger
 
@@ -186,6 +188,14 @@ class WebUser(UserMixin):
     @property
     def user_id(self):
         return self._user_id
+    
+    @property
+    def username(self):
+        return self._username
+    
+    @property
+    def full_name(self):
+        return self._full_name
 
 
 @login_manager.user_loader
@@ -1962,6 +1972,381 @@ def service_worker():
     response.headers['Pragma'] = 'no-cache'
     response.headers['Expires'] = '0'
     return response
+
+
+@app.route('/polls')
+@admin_required
+def polls():
+    """Сторінка управління опитуваннями"""
+    poll_manager = get_poll_manager()
+    # Перевіряємо та закриваємо опитування з закінченим терміном дії
+    poll_manager.check_and_close_expired_polls()
+    active_polls = poll_manager.get_active_polls()
+    
+    # Отримуємо також закриті опитування
+    with get_session() as session:
+        closed_polls = session.query(Poll).filter(
+            Poll.is_closed == True
+        ).order_by(Poll.closed_at.desc()).limit(50).all()
+        
+        closed_polls_data = []
+        for poll in closed_polls:
+            author = session.query(User).filter(User.user_id == poll.author_id).first()
+            author_name = author.full_name if author and author.full_name else poll.author_username or f"ID: {poll.author_id}"
+            response_count = session.query(PollResponse).filter(PollResponse.poll_id == poll.id).count()
+            
+            closed_polls_data.append({
+                'id': poll.id,
+                'question': poll.question,
+                'author_name': author_name,
+                'created_at': poll.created_at,
+                'closed_at': poll.closed_at,
+                'response_count': response_count,
+                'is_anonymous': poll.is_anonymous
+            })
+    
+    return render_template('polls.html', active_polls=active_polls, closed_polls=closed_polls_data)
+
+
+@app.route('/polls/create', methods=['GET', 'POST'])
+@admin_required
+def create_poll():
+    """Створення нового опитування"""
+    if request.method == 'POST':
+        question = request.form.get('question', '').strip()
+        options_text = request.form.get('options', '').strip()
+        expires_at_str = request.form.get('expires_at', '').strip()
+        is_anonymous = request.form.get('is_anonymous') == 'on'
+        
+        if not question:
+            flash('Питання опитування не може бути порожнім.', 'danger')
+            return redirect(url_for('create_poll'))
+        
+        # Парсимо варіанти відповіді (кожен рядок - окремий варіант)
+        options = [opt.strip() for opt in options_text.split('\n') if opt.strip()]
+        
+        if len(options) < 2:
+            flash('Опитування має містити мінімум 2 варіанти відповіді.', 'danger')
+            return redirect(url_for('create_poll'))
+        
+        if len(options) > 10:
+            flash('Опитування має містити максимум 10 варіантів відповіді.', 'danger')
+            return redirect(url_for('create_poll'))
+        
+        expires_at = None
+        if expires_at_str:
+            try:
+                expires_at = datetime.strptime(expires_at_str, '%Y-%m-%dT%H:%M')
+            except ValueError:
+                flash('Невірний формат дати та часу.', 'danger')
+                return redirect(url_for('create_poll'))
+        
+        poll_manager = get_poll_manager()
+        poll_id = poll_manager.create_poll(
+            question=question,
+            options=options,
+            author_id=current_user.user_id,
+            author_username=current_user.username or f"user_{current_user.user_id}",
+            expires_at=expires_at,
+            is_anonymous=is_anonymous
+        )
+        
+        if poll_id:
+            flash('Опитування створено успішно.', 'success')
+            return redirect(url_for('poll_detail', poll_id=poll_id))
+        else:
+            flash('Помилка створення опитування.', 'danger')
+            return redirect(url_for('polls'))
+    
+    return render_template('create_poll.html')
+
+
+@app.route('/polls/<int:poll_id>')
+@admin_required
+def poll_detail(poll_id):
+    """Деталі опитування з результатами"""
+    poll_manager = get_poll_manager()
+    results = poll_manager.get_poll_results(poll_id)
+    
+    if not results:
+        flash('Опитування не знайдено.', 'danger')
+        return redirect(url_for('polls'))
+    
+    # Отримуємо інформацію про опитування та список користувачів
+    with get_session() as session:
+        poll = session.query(Poll).filter(Poll.id == poll_id).first()
+        if not poll:
+            flash('Опитування не знайдено.', 'danger')
+            return redirect(url_for('polls'))
+        
+        # Перетворюємо об'єкт на словник, щоб уникнути проблем з сесією
+        poll_data = {
+            'id': poll.id,
+            'question': poll.question,
+            'author_id': poll.author_id,
+            'author_username': poll.author_username,
+            'created_at': poll.created_at,
+            'expires_at': poll.expires_at,
+            'closed_at': poll.closed_at,
+            'is_closed': poll.is_closed,
+            'sent_to_users': poll.sent_to_users,
+            'is_anonymous': poll.is_anonymous,
+            'report_sent': poll.report_sent
+        }
+        
+        # Отримуємо список користувачів для вибору (тільки Telegram користувачі)
+        users_list = session.query(User).filter(User.user_id > 0).all()
+        users = []
+        for user in users_list:
+            users.append({
+                'user_id': user.user_id,
+                'username': user.username or f"user_{user.user_id}",
+                'full_name': user.full_name
+            })
+    
+    return render_template('poll_detail.html', poll=poll_data, results=results, users=users)
+
+
+@app.route('/polls/<int:poll_id>/send', methods=['POST'])
+@admin_required
+def send_poll(poll_id):
+    """Відправка опитування користувачам"""
+    poll_manager = get_poll_manager()
+    
+    # Перевіряємо, чи опитування вже відправлено
+    with get_session() as session:
+        poll = session.query(Poll).filter(Poll.id == poll_id).first()
+        if not poll:
+            flash('Опитування не знайдено.', 'danger')
+            return redirect(url_for('polls'))
+        
+        if poll.sent_to_users:
+            flash('Опитування вже відправлено користувачам.', 'warning')
+            return redirect(url_for('poll_detail', poll_id=poll_id))
+        
+        # Отримуємо список отримувачів
+        send_to_all = request.form.get('send_to_all') == 'on'
+        
+        if send_to_all:
+            # Відправляємо всім користувачам з Telegram
+            users = session.query(User).filter(User.user_id > 0).all()
+            user_ids = [user.user_id for user in users]
+        else:
+            # Отримуємо вибраних користувачів
+            user_ids = [int(rid) for rid in request.form.getlist('recipient_ids')]
+        
+        if not user_ids:
+            flash('Виберіть хоча б одного отримувача!', 'warning')
+            return redirect(url_for('poll_detail', poll_id=poll_id))
+    
+    stats = poll_manager.send_poll_to_users(poll_id, user_ids=user_ids)
+    
+    if stats['sent'] > 0:
+        flash(f'Опитування відправлено {stats["sent"]} користувачам.', 'success')
+    else:
+        flash('Не вдалося відправити опитування.', 'danger')
+    
+    return redirect(url_for('poll_detail', poll_id=poll_id))
+
+
+@app.route('/polls/<int:poll_id>/close', methods=['POST'])
+@admin_required
+def close_poll(poll_id):
+    """Закриття опитування"""
+    poll_manager = get_poll_manager()
+    
+    success = poll_manager.close_poll(poll_id)
+    
+    if success:
+        flash('Опитування закрито.', 'success')
+    else:
+        flash('Помилка закриття опитування.', 'danger')
+    
+    return redirect(url_for('poll_detail', poll_id=poll_id))
+
+
+@app.route('/polls/<int:poll_id>/send_report', methods=['POST'])
+@admin_required
+def send_poll_report(poll_id):
+    """Відправка звіту з результатами опитування"""
+    poll_manager = get_poll_manager()
+    
+    stats = poll_manager.send_poll_report_to_users(poll_id)
+    
+    if stats['sent'] > 0:
+        flash(f'Звіт відправлено {stats["sent"]} користувачам.', 'success')
+    else:
+        flash('Не вдалося відправити звіт.', 'danger')
+    
+    return redirect(url_for('poll_detail', poll_id=poll_id))
+
+
+@app.route('/polls/<int:poll_id>/delete', methods=['POST'])
+@admin_required
+def delete_poll(poll_id):
+    """Видалення опитування"""
+    with get_session() as session:
+        poll = session.query(Poll).filter(Poll.id == poll_id).first()
+        if not poll:
+            flash('Опитування не знайдено.', 'danger')
+            return redirect(url_for('polls'))
+        
+        # Видаляємо опитування (каскадне видалення видалить опції та відповіді)
+        session.delete(poll)
+        session.commit()
+        
+        flash('Опитування видалено.', 'success')
+    
+    return redirect(url_for('polls'))
+
+
+@app.route('/announcements')
+@admin_required
+def announcements():
+    """Управління оголошеннями"""
+    try:
+        announcement_manager = get_announcement_manager()
+        
+        # Отримуємо історію оголошень та список користувачів
+        with get_session() as session:
+            # Отримуємо історію оголошень
+            announcements_list = session.query(Announcement).order_by(
+                Announcement.sent_at.desc()
+            ).limit(100).all()
+            
+            announcement_history = []
+            for ann in announcements_list:
+                announcement_history.append({
+                    'id': ann.id,
+                    'content': ann.content[:100] + '...' if len(ann.content) > 100 else ann.content,
+                    'author_username': ann.author_username,
+                    'priority': ann.priority,
+                    'sent_at': ann.sent_at if ann.sent_at else None,
+                    'recipient_count': ann.recipient_count or 0,
+                    'created_at': ann.created_at
+                })
+            
+            # Отримуємо список користувачів для вибору
+            users_list = session.query(User).filter(User.user_id > 0).all()  # Тільки Telegram користувачі
+            users = []
+            for user in users_list:
+                users.append({
+                    'user_id': user.user_id,
+                    'username': user.username or f"user_{user.user_id}",
+                    'full_name': user.full_name
+                })
+        
+        return render_template('announcements.html',
+                             announcements=announcement_history,
+                             users=users)
+    except Exception as e:
+        logger.log_error(f"Помилка завантаження оголошень: {e}")
+        flash(f'Помилка завантаження оголошень: {e}', 'danger')
+        return render_template('announcements.html', announcements=[], users=[])
+
+
+@app.route('/announcements/create', methods=['POST'])
+@admin_required
+def create_announcement():
+    """Створення та відправка оголошення"""
+    try:
+        announcement_manager = get_announcement_manager()
+        
+        content = request.form.get('content', '').strip()
+        priority = request.form.get('priority', 'normal')
+        
+        # Отримуємо список отримувачів
+        send_to_all = request.form.get('send_to_all') == 'on'
+        
+        if send_to_all:
+            # Отримуємо всіх користувачів з увімкненими оповіщеннями
+            with get_session() as session:
+                users = session.query(User).filter(
+                    User.notifications_enabled == True,
+                    User.user_id > 0  # Тільки Telegram користувачі
+                ).all()
+                recipient_ids = [user.user_id for user in users]
+        else:
+            # Отримуємо вибраних користувачів
+            recipient_ids = [int(rid) for rid in request.form.getlist('recipient_ids')]
+        
+        if not recipient_ids:
+            flash('Виберіть хоча б одного отримувача!', 'warning')
+            return redirect(url_for('announcements'))
+        
+        if not content:
+            flash('Введіть текст оголошення!', 'warning')
+            return redirect(url_for('announcements'))
+        
+        # Відправляємо оголошення
+        result = announcement_manager.send_announcement_to_users(
+            recipient_user_ids=recipient_ids,
+            content=content,
+            priority=priority,
+            author_id=current_user.user_id,
+            author_username=current_user.username or f"user_{current_user.user_id}"
+        )
+        
+        if result['sent'] > 0:
+            flash(f'Оголошення відправлено {result["sent"]} користувачам!', 'success')
+        if result['failed'] > 0:
+            flash(f'Помилка відправки {result["failed"]} оголошень', 'warning')
+            
+    except Exception as e:
+        logger.log_error(f"Помилка створення оголошення: {e}")
+        flash(f'Помилка створення оголошення: {e}', 'danger')
+    
+    return redirect(url_for('announcements'))
+
+
+@app.route('/announcements/<int:ann_id>/recipients')
+@admin_required
+def announcement_recipients(ann_id):
+    """Перегляд отримувачів оголошення"""
+    try:
+        announcement_manager = get_announcement_manager()
+        recipients = announcement_manager.get_announcement_recipients(ann_id)
+        
+        with get_session() as session:
+            announcement = session.query(Announcement).filter(Announcement.id == ann_id).first()
+            if not announcement:
+                flash('Оголошення не знайдено!', 'warning')
+                return redirect(url_for('announcements'))
+            
+            # Перетворюємо об'єкт на словник, щоб уникнути проблем з сесією
+            announcement_data = {
+                'id': announcement.id,
+                'content': announcement.content,
+                'author_username': announcement.author_username,
+                'priority': announcement.priority,
+                'sent_at': announcement.sent_at
+            }
+        
+        return render_template('announcement_recipients.html',
+                             announcement=announcement_data,
+                             recipients=recipients)
+    except Exception as e:
+        logger.log_error(f"Помилка отримання отримувачів оголошення: {e}")
+        flash(f'Помилка отримання отримувачів: {e}', 'danger')
+        return redirect(url_for('announcements'))
+
+
+@app.route('/announcements/<int:ann_id>/delete', methods=['POST'])
+@admin_required
+def delete_announcement(ann_id):
+    """Видалення оголошення"""
+    try:
+        announcement_manager = get_announcement_manager()
+        
+        if announcement_manager.delete_announcement(ann_id):
+            flash('Оголошення видалено!', 'success')
+        else:
+            flash('Оголошення не знайдено!', 'warning')
+    except Exception as e:
+        logger.log_error(f"Помилка видалення оголошення: {e}")
+        flash(f'Помилка видалення оголошення: {e}', 'danger')
+    
+    return redirect(url_for('announcements'))
 
 
 @app.route('/apple-touch-icon.png')

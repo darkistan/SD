@@ -1342,10 +1342,38 @@ def favicon():
     return '', 204  # No Content
 
 
+# PWA маршрути
+@app.route('/manifest.json')
+def manifest():
+    """PWA Web App Manifest"""
+    return send_file('static/manifest.json', mimetype='application/manifest+json')
+
+
 @app.route('/sw.js')
+@csrf.exempt
 def service_worker():
-    """Обробка запитів на service worker (не реалізовано)"""
-    return '', 404
+    """Service Worker для PWA"""
+    response = send_file('static/js/sw.js', mimetype='application/javascript')
+    # Дозволяємо service worker працювати на всіх сторінках
+    response.headers['Service-Worker-Allowed'] = '/'
+    # Відключаємо кешування для service worker (важливо для оновлень)
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
+
+
+@app.route('/apple-touch-icon.png')
+@app.route('/apple-touch-icon-precomposed.png')
+@app.route('/apple-touch-icon-120x120.png')
+@app.route('/apple-touch-icon-120x120-precomposed.png')
+def apple_touch_icon():
+    """Обробка запитів на apple-touch-icon для iOS (різні варіанти шляхів)"""
+    try:
+        return send_file('static/icons/apple-touch-icon.png', mimetype='image/png')
+    except FileNotFoundError:
+        # Якщо іконка не знайдена, повертаємо 204 (No Content)
+        return '', 204
 
 
 if __name__ == '__main__':

@@ -181,54 +181,71 @@ async def new_ticket_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def my_tickets_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Команда перегляду своїх заявок"""
-    user_id = update.effective_user.id if update.effective_user else update.callback_query.from_user.id
-    
-    if not auth_manager.is_user_allowed(user_id):
-        logger.log_unauthorized_access_attempt(user_id, "/my_tickets")
-        error_msg = "❌ У вас немає доступу до системи."
+    try:
+        user_id = update.effective_user.id if update.effective_user else update.callback_query.from_user.id
+        
+        if not auth_manager.is_user_allowed(user_id):
+            logger.log_unauthorized_access_attempt(user_id, "/my_tickets")
+            error_msg = "❌ У вас немає доступу до системи."
+            if update.message:
+                await update.message.reply_text(error_msg)
+            elif update.callback_query:
+                await update.callback_query.edit_message_text(error_msg)
+            return
+        
+        ticket_manager = get_ticket_manager()
+        tickets = ticket_manager.get_user_tickets(user_id, limit=5)
+        
+        message_text = "📋 <b>Ваші заявки:</b>\n\n"
+        
+        if not tickets:
+            message_text = "📋 У вас поки немає заявок."
+        else:
+            for ticket in tickets:
+                status_emoji = {
+                    'NEW': '🆕',
+                    'ACCEPTED': '✅',
+                    'COLLECTING': '📦',
+                    'SENT_TO_CONTRACTOR': '📤',
+                    'WAITING_CONTRACTOR': '⏳',
+                    'RECEIVED_FROM_CONTRACTOR': '📥',
+                    'QC_CHECK': '🔍',
+                    'READY': '✅',
+                    'DELIVERED_INSTALLED': '🎉',
+                    'CLOSED': '✔️'
+                }.get(ticket['status'], '📋')
+                
+                status_ua = get_status_ua(ticket['status'])
+                created_at_str = ticket['created_at'][:10] if ticket['created_at'] else 'Невідомо'
+                message_text += (
+                    f"{status_emoji} <b>#{ticket['id']}</b> - {get_ticket_type_ua(ticket['ticket_type'])}\n"
+                    f"Статус: {status_ua}\n"
+                    f"Дата: {created_at_str}\n\n"
+                )
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("➕ Створити нову заявку", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "new_ticket"))]
+        ])
+        
+        # Підтримка як команди, так і callback
+        if update.message:
+            await update.message.reply_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+        elif update.callback_query:
+            try:
+                await update.callback_query.edit_message_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+            except Exception as edit_error:
+                # Якщо не вдалося відредагувати (наприклад, повідомлення видалено), відправляємо нове
+                try:
+                    await update.callback_query.message.reply_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+                except Exception as reply_error:
+                    logger.log_error(f"Помилка відправки повідомлення: {reply_error}")
+    except Exception as e:
+        logger.log_error(f"Помилка в my_tickets_command: {e}")
+        error_msg = "❌ Помилка при отриманні заявок. Спробуйте пізніше."
         if update.message:
             await update.message.reply_text(error_msg)
         elif update.callback_query:
             await update.callback_query.edit_message_text(error_msg)
-        return
-    
-    ticket_manager = get_ticket_manager()
-    tickets = ticket_manager.get_user_tickets(user_id, limit=10)
-    
-    message_text = "📋 <b>Ваші заявки:</b>\n\n"
-    
-    if not tickets:
-        message_text = "📋 У вас поки немає заявок."
-    else:
-        for ticket in tickets:
-            status_emoji = {
-                'NEW': '🆕',
-                'ACCEPTED': '✅',
-                'COLLECTING': '📦',
-                'SENT_TO_CONTRACTOR': '📤',
-                'WAITING_CONTRACTOR': '⏳',
-                'RECEIVED_FROM_CONTRACTOR': '📥',
-                'QC_CHECK': '🔍',
-                'READY': '✅',
-                'DELIVERED_INSTALLED': '🎉',
-                'CLOSED': '✔️'
-            }.get(ticket['status'], '📋')
-            
-            message_text += (
-                f"{status_emoji} <b>#{ticket['id']}</b> - {get_ticket_type_ua(ticket['ticket_type'])}\n"
-                f"Статус: {get_status_ua(ticket['status'])}\n"
-                f"Дата: {ticket['created_at'][:10] if ticket['created_at'] else 'Невідомо'}\n\n"
-            )
-    
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("➕ Створити нову заявку", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "new_ticket"))]
-    ])
-    
-    # Підтримка як команди, так і callback
-    if update.message:
-        await update.message.reply_text(message_text, reply_markup=keyboard, parse_mode='HTML')
-    elif update.callback_query:
-        await update.callback_query.edit_message_text(message_text, reply_markup=keyboard, parse_mode='HTML')
 
 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -265,7 +282,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         # Не видаляємо повідомлення, бо new_ticket_command вже редагує його через edit_message_text
     elif callback_data == "my_tickets":
         await my_tickets_command(update, context)
-        await query.message.delete()
+        # Не видаляємо повідомлення, бо my_tickets_command вже редагує його через edit_message_text
     elif callback_data == "help":
         help_text = (
             "ℹ️ <b>Довідка</b>\n\n"

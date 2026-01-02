@@ -61,6 +61,7 @@
                                 <th>Картридж</th>
                                 <th>Режим обслуговування</th>
                                 <th>Основний</th>
+                                <th>Дії</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -83,6 +84,19 @@
                                     <span class="text-muted">-</span>
                                     {% endif %}
                                 </td>
+                                <td>
+                                    <div class="btn-group" role="group">
+                                        <button class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#editCompatibilityModal{{ cartridge.compatibility_id }}">
+                                            <i class="bi bi-pencil"></i> Редагувати
+                                        </button>
+                                        <form method="POST" action="{{ url_for('delete_printer_compatibility', compatibility_id=cartridge.compatibility_id) }}" style="display:inline;" onsubmit="return confirm('Ви впевнені, що хочете видалити сумісність {{ cartridge.cartridge_name }}?');">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                            <button type="submit" class="btn btn-sm btn-danger">
+                                                <i class="bi bi-trash"></i> Видалити
+                                            </button>
+                                        </form>
+                                    </div>
+                                </td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -103,5 +117,40 @@
         </a>
     </div>
 </div>
+
+<!-- Модальні вікна для редагування сумісності -->
+{% for cartridge in compatible_cartridges %}
+<div class="modal fade" id="editCompatibilityModal{{ cartridge.compatibility_id }}" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Редагувати сумісність</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('edit_printer_compatibility', compatibility_id=cartridge.compatibility_id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Картридж</label>
+                        <input type="text" class="form-control" value="{{ cartridge.cartridge_name }}" disabled>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="is_default" value="1" id="isDefault{{ cartridge.compatibility_id }}" {% if cartridge.is_default %}checked{% endif %}>
+                            <label class="form-check-label" for="isDefault{{ cartridge.compatibility_id }}">
+                                Основний картридж
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
+                    <button type="submit" class="btn btn-primary">Зберегти</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
 {% endblock %}
 

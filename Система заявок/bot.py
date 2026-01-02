@@ -372,13 +372,17 @@ async def handle_printer_selection(update: Update, context: ContextTypes.DEFAULT
     if ticket_type == 'REFILL':
         # Для заправки - показуємо сумісні картриджі
         printer_manager = get_printer_manager()
-        cartridges = printer_manager.get_compatible_cartridges(printer_id)
+        all_cartridges = printer_manager.get_compatible_cartridges(printer_id)
         
-        if not cartridges:
+        if not all_cartridges:
             await update.callback_query.edit_message_text(
                 "❌ Для цього принтера не знайдено сумісних картриджів.\nЗверніться до адміністратора."
             )
             return
+        
+        # Фільтруємо: спочатку основні, якщо є - показуємо тільки їх, якщо немає - всі
+        default_cartridges = [c for c in all_cartridges if c.get('is_default', False)]
+        cartridges = default_cartridges if default_cartridges else all_cartridges
         
         buttons = []
         for cartridge in cartridges[:50]:  # Обмежуємо до 50
@@ -391,8 +395,14 @@ async def handle_printer_selection(update: Update, context: ContextTypes.DEFAULT
         
         keyboard = InlineKeyboardMarkup(buttons)
         
+        message_text = "🖨️ <b>Оберіть картридж</b>"
+        if default_cartridges:
+            message_text += "\n\n⭐ - основний картридж"
+        else:
+            message_text += "\n\n(Показано всі сумісні картриджі)"
+        
         await update.callback_query.edit_message_text(
-            "🖨️ <b>Оберіть картридж</b>\n\n⭐ - основний картридж",
+            message_text,
             reply_markup=keyboard,
             parse_mode='HTML'
         )

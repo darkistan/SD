@@ -5,7 +5,7 @@
 {% block content %}
 <div class="row">
     <div class="col-12">
-        <h1 class="mb-4"><i class="bi bi-cart"></i> Справочник картриджів</h1>
+        <h1 class="mb-4"><i class="bi bi-cart"></i> Довідник картриджів</h1>
     </div>
 </div>
 
@@ -74,23 +74,35 @@
                                     {% endif %}
                                 </td>
                                 <td>
-                                    <button class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#serviceModeModal{{ cartridge.id }}">
-                                        <i class="bi bi-pencil"></i> Змінити режим
-                                    </button>
+                                    <div class="btn-group" role="group">
+                                        <button class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#editCartridgeModal{{ cartridge.id }}">
+                                            <i class="bi bi-pencil"></i> Редагувати
+                                        </button>
+                                        <form method="POST" action="{{ url_for('delete_cartridge', cartridge_id=cartridge.id) }}" style="display:inline;" onsubmit="return confirm('Ви впевнені, що хочете видалити картридж {{ cartridge.name }}?');">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                            <button type="submit" class="btn btn-sm btn-danger">
+                                                <i class="bi bi-trash"></i> Видалити
+                                            </button>
+                                        </form>
+                                    </div>
                                 </td>
                             </tr>
                             
-                            <!-- Modal для зміни режиму -->
-                            <div class="modal fade" id="serviceModeModal{{ cartridge.id }}" tabindex="-1">
+                            <!-- Modal для редагування -->
+                            <div class="modal fade" id="editCartridgeModal{{ cartridge.id }}" tabindex="-1">
                                 <div class="modal-dialog">
                                     <div class="modal-content">
                                         <div class="modal-header">
-                                            <h5 class="modal-title">Змінити режим обслуговування</h5>
+                                            <h5 class="modal-title">Редагувати картридж</h5>
                                             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                                         </div>
-                                        <form method="POST" action="{{ url_for('update_cartridge_service_mode', cartridge_id=cartridge.id) }}">
+                                        <form method="POST" action="{{ url_for('edit_cartridge', cartridge_id=cartridge.id) }}">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                             <div class="modal-body">
+                                                <div class="mb-3">
+                                                    <label class="form-label">Назва картриджа</label>
+                                                    <input type="text" name="name" class="form-control" value="{{ cartridge.name }}" required>
+                                                </div>
                                                 <div class="mb-3">
                                                     <label class="form-label">Режим обслуговування</label>
                                                     <select name="service_mode" class="form-select">

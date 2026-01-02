@@ -71,7 +71,7 @@ class AuthManager:
             logger.log_error(f"Помилка додавання запиту для {user_id}: {e}")
             return False
     
-    def approve_user(self, user_id: int, username: str, company_id: Optional[int] = None, role: str = 'user') -> bool:
+    def approve_user(self, user_id: int, username: str, company_id: Optional[int] = None, role: str = 'user', full_name: Optional[str] = None) -> bool:
         """
         Схвалення користувача
         
@@ -80,6 +80,7 @@ class AuthManager:
             username: Ім'я користувача
             company_id: ID компанії (опціонально)
             role: Роль користувача (за замовчуванням 'user')
+            full_name: ПІБ користувача (опціонально)
             
         Returns:
             True якщо користувач був схвалений
@@ -103,7 +104,8 @@ class AuthManager:
                     approved_at=datetime.now(),
                     notifications_enabled=False,
                     role=role,
-                    company_id=company_id
+                    company_id=company_id,
+                    full_name=full_name
                 )
                 session.add(user)
                 session.commit()

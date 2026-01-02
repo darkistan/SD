@@ -155,8 +155,6 @@ class TicketItem(Base):
     cartridge_type_id = Column(Integer, ForeignKey('cartridge_types.id'), nullable=True, index=True)
     printer_model_id = Column(Integer, ForeignKey('printers.id'), nullable=True, index=True)
     quantity = Column(Integer, nullable=False, default=1)
-    sent_to_contractor = Column(Boolean, default=False, index=True)
-    contractor_id = Column(Integer, ForeignKey('contractors.id'), nullable=True, index=True)
     result = Column(String(20), nullable=True)  # OK / DEFECT
     defect_comment = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.now)
@@ -165,7 +163,6 @@ class TicketItem(Base):
     # Relationships
     cartridge_type = relationship('CartridgeType', backref='ticket_items')
     printer_model = relationship('Printer', backref='ticket_items')
-    contractor = relationship('Contractor', backref='ticket_items')
     
     def __repr__(self):
         return f"<TicketItem(id={self.id}, ticket_id={self.ticket_id}, item_type='{self.item_type}', quantity={self.quantity})>"

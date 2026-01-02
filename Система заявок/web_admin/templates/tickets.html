@@ -54,6 +54,25 @@
                         </select>
                     </div>
                     <div class="col-md-2">
+                        <label class="form-label">Період</label>
+                        <select name="period" id="periodSelect" class="form-select">
+                            <option value="">Весь період</option>
+                            <option value="today" {% if selected_period == 'today' %}selected{% endif %}>Сьогодні</option>
+                            <option value="yesterday" {% if selected_period == 'yesterday' %}selected{% endif %}>Вчора</option>
+                            <option value="week" {% if selected_period == 'week' %}selected{% endif %}>Останні 7 днів</option>
+                            <option value="month" {% if selected_period == 'month' %}selected{% endif %}>Останні 30 днів</option>
+                            <option value="custom" {% if selected_period == 'custom' %}selected{% endif %}>Кастомний період</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2" id="dateFromGroup" style="display: {% if selected_period == 'custom' %}block{% else %}none{% endif %};">
+                        <label class="form-label">Дата від</label>
+                        <input type="date" name="date_from" id="dateFrom" class="form-control" value="{{ selected_date_from }}">
+                    </div>
+                    <div class="col-md-2" id="dateToGroup" style="display: {% if selected_period == 'custom' %}block{% else %}none{% endif %};">
+                        <label class="form-label">Дата до</label>
+                        <input type="date" name="date_to" id="dateTo" class="form-control" value="{{ selected_date_to }}">
+                    </div>
+                    <div class="col-md-2">
                         <label class="form-label">&nbsp;</label>
                         <button type="submit" class="btn btn-primary w-100">
                             <i class="bi bi-search"></i> Фільтрувати
@@ -88,7 +107,7 @@
                             <tr>
                                 <td>#{{ ticket.id }}</td>
                                 <td>{{ ticket.ticket_type | ticket_type_ua }}</td>
-                                <td><span class="badge bg-info">{{ ticket.status | status_ua }}</span></td>
+                                <td><span class="badge {{ ticket.status | status_badge_color(ticket.ticket_type) }}">{{ ticket.status | status_ua }}</span></td>
                                 <td>{{ ticket.company_name or 'Невідомо' }}</td>
                                 <td>{{ ticket.user_name or 'Невідомо' }}</td>
                                 <td>{{ ticket.created_at[:10] if ticket.created_at else 'Невідомо' }}</td>
@@ -109,5 +128,28 @@
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const periodSelect = document.getElementById('periodSelect');
+    const dateFromGroup = document.getElementById('dateFromGroup');
+    const dateToGroup = document.getElementById('dateToGroup');
+    const dateFrom = document.getElementById('dateFrom');
+    const dateTo = document.getElementById('dateTo');
+    
+    periodSelect.addEventListener('change', function() {
+        if (this.value === 'custom') {
+            dateFromGroup.style.display = 'block';
+            dateToGroup.style.display = 'block';
+        } else {
+            dateFromGroup.style.display = 'none';
+            dateToGroup.style.display = 'none';
+            // Очищаємо поля дат для швидких періодів (сервер обробляє їх автоматично)
+            dateFrom.value = '';
+            dateTo.value = '';
+        }
+    });
+});
+</script>
 {% endblock %}
 

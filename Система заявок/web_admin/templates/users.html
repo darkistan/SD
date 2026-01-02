@@ -59,6 +59,11 @@
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                             <div class="modal-body">
                                                 <div class="mb-3">
+                                                    <label class="form-label">ПІБ (Повне Ім'я та Прізвище)</label>
+                                                    <input type="text" name="full_name" class="form-control" placeholder="Наприклад: Іван Петренко">
+                                                    <small class="text-muted">Опціонально</small>
+                                                </div>
+                                                <div class="mb-3">
                                                     <label class="form-label">Компанія</label>
                                                     <select name="company_id" class="form-select">
                                                         <option value="">Без компанії</option>
@@ -86,6 +91,59 @@
 </div>
 {% endif %}
 
+<!-- Додати веб-користувача -->
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="card border-primary">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="bi bi-person-plus"></i> Додати веб-користувача (без Telegram)</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('add_web_user') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <div class="row">
+                        <div class="col-md-3">
+                            <label class="form-label">ПІБ <span class="text-danger">*</span></label>
+                            <input type="text" name="full_name" class="form-control" placeholder="Іван Петренко" required>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Username</label>
+                            <input type="text" name="username" class="form-control" placeholder="ivan_petrenko">
+                            <small class="text-muted">Опціонально</small>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Пароль <span class="text-danger">*</span></label>
+                            <input type="password" name="password" class="form-control" placeholder="Мінімум 6 символів" required minlength="6">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Компанія</label>
+                            <select name="company_id" class="form-select">
+                                <option value="">Без компанії</option>
+                                {% for company in companies %}
+                                <option value="{{ company.id }}">{{ company.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Роль</label>
+                            <select name="role" class="form-select">
+                                <option value="user">Користувач</option>
+                                <option value="admin">Адмін</option>
+                            </select>
+                        </div>
+                        <div class="col-md-1">
+                            <label class="form-label">&nbsp;</label>
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="bi bi-plus"></i> Додати
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Список користувачів -->
 <div class="row">
     <div class="col-12">
@@ -109,8 +167,19 @@
                         <tbody>
                             {% for user in users %}
                             <tr>
-                                <td>{{ user.user_id }}</td>
-                                <td>@{{ user.username or 'Невідомо' }}</td>
+                                <td>
+                                    {{ user.user_id }}
+                                    {% if user.user_id < 0 %}
+                                    <span class="badge bg-secondary" title="Веб-користувач (без Telegram)">WEB</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if user.username %}
+                                    @{{ user.username }}
+                                    {% else %}
+                                    <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
                                 <td>{{ user.full_name or 'Не встановлено' }}</td>
                                 <td>
                                     {% if user.role == 'admin' %}
@@ -131,14 +200,58 @@
                                     {% endif %}
                                 </td>
                                 <td>
-                                    <button class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#passwordModal{{ user.user_id }}">
-                                        <i class="bi bi-key"></i> Пароль
-                                    </button>
-                                    <button class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#companyModal{{ user.user_id }}">
-                                        <i class="bi bi-building"></i> Компанія
-                                    </button>
+                                    <div class="btn-group" role="group">
+                                        <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#fullNameModal{{ user.user_id }}">
+                                            <i class="bi bi-person"></i> ПІБ
+                                        </button>
+                                        <button class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#passwordModal{{ user.user_id }}">
+                                            <i class="bi bi-key"></i> Пароль
+                                        </button>
+                                        <button class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#companyModal{{ user.user_id }}">
+                                            <i class="bi bi-building"></i> Компанія
+                                        </button>
+                                        {% if user.user_id != 1 %}
+                                        <form method="POST" action="{{ url_for('delete_user') }}" style="display:inline;" onsubmit="return confirm('Ви впевнені, що хочете видалити користувача {{ user.full_name or user.username or user.user_id }}?');">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                            <input type="hidden" name="user_id" value="{{ user.user_id }}"/>
+                                            <button type="submit" class="btn btn-sm btn-danger">
+                                                <i class="bi bi-trash"></i> Видалити
+                                            </button>
+                                        </form>
+                                        {% else %}
+                                        <button type="button" class="btn btn-sm btn-danger" disabled title="Неможливо видалити системного адміністратора">
+                                            <i class="bi bi-trash"></i> Видалити
+                                        </button>
+                                        {% endif %}
+                                    </div>
                                 </td>
                             </tr>
+                            
+                            <!-- Modal для ПІБ -->
+                            <div class="modal fade" id="fullNameModal{{ user.user_id }}" tabindex="-1">
+                                <div class="modal-dialog">
+                                    <div class="modal-content">
+                                        <div class="modal-header">
+                                            <h5 class="modal-title">Редагувати ПІБ для @{{ user.username }}</h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                        </div>
+                                        <form method="POST" action="{{ url_for('update_user_full_name', user_id=user.user_id) }}">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                            <div class="modal-body">
+                                                <div class="mb-3">
+                                                    <label class="form-label">ПІБ (Повне Ім'я та Прізвище)</label>
+                                                    <input type="text" name="full_name" class="form-control" value="{{ user.full_name or '' }}" placeholder="Наприклад: Іван Петренко">
+                                                    <small class="text-muted">Залиште порожнім, щоб видалити ПІБ</small>
+                                                </div>
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
+                                                <button type="submit" class="btn btn-primary">Зберегти</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
                             
                             <!-- Modal для пароля -->
                             <div class="modal fade" id="passwordModal{{ user.user_id }}" tabindex="-1">

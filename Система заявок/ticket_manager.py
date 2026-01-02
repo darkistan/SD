@@ -1,7 +1,7 @@
 """
 Модуль для управління заявками
 """
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 
 from database import get_session
@@ -169,6 +169,59 @@ class TicketManager:
             logger.log_error(f"Помилка зміни статусу заявки {ticket_id}: {e}")
             return False
     
+    def change_priority(
+        self,
+        ticket_id: int,
+        new_priority: str,
+        admin_id: int
+    ) -> bool:
+        """
+        Зміна пріоритету заявки (тільки для адміністратора)
+        
+        Args:
+            ticket_id: ID заявки
+            new_priority: Новий пріоритет (LOW / NORMAL / HIGH)
+            admin_id: ID адміністратора
+            
+        Returns:
+            True якщо пріоритет змінено
+        """
+        try:
+            # Валідація пріоритету
+            if new_priority not in ['LOW', 'NORMAL', 'HIGH']:
+                logger.log_error(f"Невірний пріоритет: {new_priority}")
+                return False
+            
+            with get_session() as session:
+                ticket = session.query(Ticket).filter(Ticket.id == ticket_id).first()
+                if not ticket:
+                    logger.log_error(f"Заявка {ticket_id} не знайдена")
+                    return False
+                
+                old_priority = ticket.priority
+                ticket.priority = new_priority
+                ticket.updated_at = datetime.now()
+                
+                # Логуємо зміну пріоритету
+                message = f"Заявка ID: {ticket_id} | Пріоритет змінено: {old_priority} → {new_priority}"
+                log = Log(
+                    timestamp=datetime.now(),
+                    level='INFO',
+                    message=message,
+                    user_id=admin_id,
+                    command='CHANGE_PRIORITY'
+                )
+                session.add(log)
+                session.commit()
+                
+                logger.log_info(f"Пріоритет заявки {ticket_id} змінено з {old_priority} на {new_priority} адміністратором {admin_id}")
+                
+                return True
+                
+        except Exception as e:
+            logger.log_error(f"Помилка зміни пріоритету заявки {ticket_id}: {e}")
+            return False
+    
     def get_ticket(self, ticket_id: int) -> Optional[Dict[str, Any]]:
         """
         Отримання заявки за ID
@@ -196,6 +249,8 @@ class TicketManager:
         user_id: int,
         status: Optional[str] = None,
         ticket_type: Optional[str] = None,
+        date_from: Optional[datetime] = None,
+        date_to: Optional[datetime] = None,
         limit: int = 100
     ) -> List[Dict[str, Any]]:
         """
@@ -205,6 +260,8 @@ class TicketManager:
             user_id: ID користувача
             status: Фільтр по статусу (опціонально)
             ticket_type: Фільтр по типу (опціонально)
+            date_from: Фільтр по даті створення (від) (опціонально)
+            date_to: Фільтр по даті створення (до) (опціонально)
             limit: Максимальна кількість записів
             
         Returns:
@@ -220,6 +277,14 @@ class TicketManager:
                 if ticket_type:
                     query = query.filter(Ticket.ticket_type == ticket_type)
                 
+                if date_from:
+                    query = query.filter(Ticket.created_at >= date_from)
+                
+                if date_to:
+                    # Додаємо 1 день, щоб включити весь день
+                    date_to_end = date_to + timedelta(days=1)
+                    query = query.filter(Ticket.created_at < date_to_end)
+                
                 tickets = query.order_by(Ticket.created_at.desc()).limit(limit).all()
                 
                 return [self._ticket_to_dict(ticket, session) for ticket in tickets]
@@ -234,6 +299,8 @@ class TicketManager:
         status: Optional[str] = None,
         ticket_type: Optional[str] = None,
         priority: Optional[str] = None,
+        date_from: Optional[datetime] = None,
+        date_to: Optional[datetime] = None,
         limit: int = 1000
     ) -> List[Dict[str, Any]]:
         """
@@ -244,6 +311,8 @@ class TicketManager:
             status: Фільтр по статусу (опціонально)
             ticket_type: Фільтр по типу (опціонально)
             priority: Фільтр по пріоритету (опціонально)
+            date_from: Фільтр по даті створення (від) (опціонально)
+            date_to: Фільтр по даті створення (до) (опціонально)
             limit: Максимальна кількість записів
             
         Returns:
@@ -264,6 +333,14 @@ class TicketManager:
                 
                 if priority:
                     query = query.filter(Ticket.priority == priority)
+                
+                if date_from:
+                    query = query.filter(Ticket.created_at >= date_from)
+                
+                if date_to:
+                    # Додаємо 1 день, щоб включити весь день
+                    date_to_end = date_to + timedelta(days=1)
+                    query = query.filter(Ticket.created_at < date_to_end)
                 
                 tickets = query.order_by(Ticket.created_at.desc()).limit(limit).all()
                 
@@ -306,8 +383,6 @@ class TicketManager:
             'cartridge_type_id': item.cartridge_type_id,
             'printer_model_id': item.printer_model_id,
             'quantity': item.quantity,
-            'sent_to_contractor': item.sent_to_contractor,
-            'contractor_id': item.contractor_id,
             'result': item.result,
             'defect_comment': item.defect_comment,
             'printer_name': None,

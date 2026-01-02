@@ -61,6 +61,7 @@
                                 <th>Контакти</th>
                                 <th>Типи послуг</th>
                                 <th>Статус</th>
+                                <th>Дії</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -85,6 +86,19 @@
                                     <span class="badge bg-secondary">Неактивний</span>
                                     {% endif %}
                                 </td>
+                                <td>
+                                    <div class="btn-group" role="group">
+                                        <button class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#editContractorModal{{ contractor.id }}">
+                                            <i class="bi bi-pencil"></i> Редагувати
+                                        </button>
+                                        <form method="POST" action="{{ url_for('delete_contractor', contractor_id=contractor.id) }}" style="display:inline;" onsubmit="return confirm('Ви впевнені, що хочете видалити підрядника {{ contractor.name }}?');">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                            <button type="submit" class="btn btn-sm btn-danger">
+                                                <i class="bi bi-trash"></i> Видалити
+                                            </button>
+                                        </form>
+                                    </div>
+                                </td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -97,5 +111,52 @@
         </div>
     </div>
 </div>
+
+<!-- Модальні вікна для редагування -->
+{% for contractor in contractors %}
+<div class="modal fade" id="editContractorModal{{ contractor.id }}" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Редагувати підрядника</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('edit_contractor', contractor_id=contractor.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Назва підрядника <span class="text-danger">*</span></label>
+                        <input type="text" name="name" class="form-control" value="{{ contractor.name }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Контактна інформація</label>
+                        <input type="text" name="contact_info" class="form-control" value="{{ contractor.contact_info or '' }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Типи послуг</label>
+                        <select name="service_types" class="form-select">
+                            <option value="BOTH" {% if contractor.service_types == 'BOTH' %}selected{% endif %}>Заправка та ремонт</option>
+                            <option value="REFILL" {% if contractor.service_types == 'REFILL' %}selected{% endif %}>Тільки заправка</option>
+                            <option value="REPAIR" {% if contractor.service_types == 'REPAIR' %}selected{% endif %}>Тільки ремонт</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="is_active" id="is_active{{ contractor.id }}" {% if contractor.is_active %}checked{% endif %}>
+                            <label class="form-check-label" for="is_active{{ contractor.id }}">
+                                Активний
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
+                    <button type="submit" class="btn btn-primary">Зберегти</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
 {% endblock %}
 

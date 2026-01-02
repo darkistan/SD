@@ -71,6 +71,7 @@ class PrinterManager:
                     
                     if cartridge:
                         result.append({
+                            'compatibility_id': comp.id,
                             'cartridge_type_id': cartridge.id,
                             'cartridge_name': cartridge.name,
                             'service_mode': cartridge.service_mode,
@@ -219,6 +220,135 @@ class PrinterManager:
             stats['errors'] += 1
         
         return stats
+    
+    def update_printer(self, printer_id: int, model: str, description: Optional[str] = None) -> bool:
+        """
+        Оновлення принтера
+        
+        Args:
+            printer_id: ID принтера
+            model: Нова модель принтера
+            description: Новий опис (опціонально)
+        
+        Returns:
+            True якщо оновлено успішно
+        """
+        try:
+            with get_session() as session:
+                printer = session.query(Printer).filter(Printer.id == printer_id).first()
+                if not printer:
+                    logger.log_error(f"Принтер з ID {printer_id} не знайдено")
+                    return False
+                
+                # Перевіряємо чи не існує вже інший принтер з такою моделлю
+                existing = session.query(Printer).filter(
+                    Printer.model == model,
+                    Printer.id != printer_id
+                ).first()
+                if existing:
+                    logger.log_error(f"Принтер з моделлю {model} вже існує")
+                    return False
+                
+                printer.model = model
+                printer.description = description
+                session.commit()
+                
+                logger.log_info(f"Оновлено принтер ID {printer_id}: {model}")
+                return True
+        except Exception as e:
+            logger.log_error(f"Помилка оновлення принтера: {e}")
+            return False
+    
+    def delete_printer(self, printer_id: int) -> bool:
+        """
+        Видалення принтера
+        
+        Args:
+            printer_id: ID принтера
+        
+        Returns:
+            True якщо видалено успішно
+        """
+        try:
+            with get_session() as session:
+                printer = session.query(Printer).filter(Printer.id == printer_id).first()
+                if not printer:
+                    logger.log_error(f"Принтер з ID {printer_id} не знайдено")
+                    return False
+                
+                # Видаляємо всі сумісності з цим принтером
+                session.query(PrinterCartridgeCompatibility).filter(
+                    PrinterCartridgeCompatibility.printer_id == printer_id
+                ).delete()
+                
+                # Видаляємо принтер
+                session.delete(printer)
+                session.commit()
+                
+                logger.log_info(f"Видалено принтер ID {printer_id}: {printer.model}")
+                return True
+        except Exception as e:
+            logger.log_error(f"Помилка видалення принтера: {e}")
+            return False
+    
+    def update_compatibility(self, compatibility_id: int, is_default: bool) -> bool:
+        """
+        Оновлення сумісності принтера та картриджа
+        
+        Args:
+            compatibility_id: ID сумісності
+            is_default: Чи є основним
+        
+        Returns:
+            True якщо оновлено успішно
+        """
+        try:
+            with get_session() as session:
+                compatibility = session.query(PrinterCartridgeCompatibility).filter(
+                    PrinterCartridgeCompatibility.id == compatibility_id
+                ).first()
+                
+                if not compatibility:
+                    logger.log_error(f"Сумісність з ID {compatibility_id} не знайдено")
+                    return False
+                
+                compatibility.is_default = is_default
+                session.commit()
+                
+                logger.log_info(f"Оновлено сумісність ID {compatibility_id}: is_default={is_default}")
+                return True
+        except Exception as e:
+            logger.log_error(f"Помилка оновлення сумісності: {e}")
+            return False
+    
+    def delete_compatibility(self, compatibility_id: int) -> bool:
+        """
+        Видалення сумісності принтера та картриджа
+        
+        Args:
+            compatibility_id: ID сумісності
+        
+        Returns:
+            True якщо видалено успішно
+        """
+        try:
+            with get_session() as session:
+                compatibility = session.query(PrinterCartridgeCompatibility).filter(
+                    PrinterCartridgeCompatibility.id == compatibility_id
+                ).first()
+                
+                if not compatibility:
+                    logger.log_error(f"Сумісність з ID {compatibility_id} не знайдено")
+                    return False
+                
+                session.delete(compatibility)
+                session.commit()
+                
+                logger.log_info(f"Видалено сумісність ID {compatibility_id}")
+                return True
+        except Exception as e:
+            logger.log_error(f"Помилка видалення сумісності: {e}")
+            return False
 
 
 # Глобальний екземпляр менеджера принтерів

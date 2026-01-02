@@ -78,6 +78,17 @@
                         </select>
                     </div>
                     
+                    <div class="mb-3">
+                        <label class="form-label">Статус заявок</label>
+                        <select name="status" class="form-select">
+                            <option value="">Всі статуси</option>
+                            {% for status in all_statuses %}
+                            <option value="{{ status.code }}">{{ status.name_ua }}</option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">Виберіть статус заявок для включення в звіт</small>
+                    </div>
+                    
                     <button type="submit" class="btn btn-primary">
                         <i class="bi bi-file-pdf"></i> Згенерувати PDF
                     </button>
@@ -114,6 +125,17 @@
                             <option value="{{ company.id }}">{{ company.name }}</option>
                             {% endfor %}
                         </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Статус заявок</label>
+                        <select name="status" class="form-select">
+                            <option value="">Всі статуси</option>
+                            {% for status in all_statuses %}
+                            <option value="{{ status.code }}">{{ status.name_ua }}</option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">Виберіть статус заявок для включення в звіт</small>
                     </div>
                     
                     <button type="submit" class="btn btn-primary">

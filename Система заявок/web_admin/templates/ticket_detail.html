@@ -25,11 +25,25 @@
                     </tr>
                     <tr>
                         <th>Статус:</th>
-                        <td><span class="badge bg-info">{{ ticket.status | status_ua }}</span></td>
+                        <td><span class="badge {{ ticket.status | status_badge_color(ticket.ticket_type) }}">{{ ticket.status | status_ua }}</span></td>
                     </tr>
                     <tr>
                         <th>Пріоритет:</th>
-                        <td>{{ ticket.priority | priority_ua }}</td>
+                        <td>
+                            {% if current_user.is_admin %}
+                            <form method="POST" action="{{ url_for('change_ticket_priority', ticket_id=ticket['id']) }}" class="d-inline">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                <select name="priority" class="form-select form-select-sm d-inline-block" style="width: auto;" onchange="this.form.submit()">
+                                    <option value="LOW" {% if ticket.priority == 'LOW' %}selected{% endif %}>Низький</option>
+                                    <option value="NORMAL" {% if ticket.priority == 'NORMAL' %}selected{% endif %}>Нормальний</option>
+                                    <option value="HIGH" {% if ticket.priority == 'HIGH' %}selected{% endif %}>Високий</option>
+                                </select>
+                            </form>
+                            <span class="badge {{ ticket.priority | priority_badge_color }} ms-2">{{ ticket.priority | priority_ua }}</span>
+                            {% else %}
+                            <span class="badge {{ ticket.priority | priority_badge_color }}">{{ ticket.priority | priority_ua }}</span>
+                            {% endif %}
+                        </td>
                     </tr>
                     <tr>
                         <th>Компанія:</th>
@@ -59,6 +73,72 @@
             </div>
         </div>
 
+        {% if current_user.is_admin and printer_info %}
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="mb-0">Інформація про принтер</h5>
+            </div>
+            <div class="card-body">
+                <table class="table">
+                    <tr>
+                        <th>Модель принтера:</th>
+                        <td><strong>{{ printer_info.model }}</strong></td>
+                    </tr>
+                    {% if printer_info.description %}
+                    <tr>
+                        <th>Опис:</th>
+                        <td>{{ printer_info.description }}</td>
+                    </tr>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+
+        {% if compatible_cartridges %}
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="mb-0">Сумісні картриджі ({{ compatible_cartridges|length }})</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Картридж</th>
+                                <th>Режим обслуговування</th>
+                                <th>Основний</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for cartridge in compatible_cartridges %}
+                            <tr>
+                                <td>{{ cartridge.cartridge_name }}</td>
+                                <td>
+                                    {% if cartridge.service_mode == 'IN_HOUSE' %}
+                                    <span class="badge bg-primary">Внутрішнє</span>
+                                    {% elif cartridge.service_mode == 'OUTSOURCE' %}
+                                    <span class="badge bg-warning">Підрядник</span>
+                                    {% else %}
+                                    <span class="badge bg-danger">Не підтримується</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if cartridge.is_default %}
+                                    <span class="badge bg-success">⭐ Основний</span>
+                                    {% else %}
+                                    <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        {% endif %}
+
         <div class="card mb-3">
             <div class="card-header">
                 <h5 class="mb-0">Позиції заявки</h5>
@@ -70,7 +150,6 @@
                         <tr>
                             <th>Тип / Модель</th>
                             <th>Кількість</th>
-                            <th>Статус</th>
                             {% if current_user.is_admin %}
                             <th>Результат</th>
                             <th>Дії</th>
@@ -89,13 +168,6 @@
                                 {% endif %}
                             </td>
                             <td>{{ item.quantity }}</td>
-                            <td>
-                                {% if item.sent_to_contractor %}
-                                <span class="badge bg-success">Відправлено</span>
-                                {% else %}
-                                <span class="badge bg-warning">В очікуванні</span>
-                                {% endif %}
-                            </td>
                             {% if current_user.is_admin %}
                             <td>
                                 {% if item.result == 'DEFECT' %}
@@ -107,7 +179,7 @@
                                 {% endif %}
                             </td>
                             <td>
-                                {% if item.sent_to_contractor and not item.result %}
+                                {% if ticket.status == 'QC_CHECK' and not item.result %}
                                 <form method="POST" action="{{ url_for('mark_ticket_item_ok', ticket_id=ticket['id']) }}" style="display:inline;">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                     <input type="hidden" name="item_id" value="{{ item.id }}"/>
@@ -123,7 +195,7 @@
                             {% endif %}
                         </tr>
                         
-                        {% if current_user.is_admin and item.sent_to_contractor and not item.result %}
+                        {% if current_user.is_admin and ticket.status == 'QC_CHECK' and not item.result %}
                         <!-- Modal для фіксації браку -->
                         <div class="modal fade" id="defectModal{{ item.id }}" tabindex="-1">
                             <div class="modal-dialog">

@@ -4,16 +4,8 @@
 
 {% block content %}
 <div class="row">
-    <div class="col-md-8">
-        <h1 class="mb-4"><i class="bi bi-printer"></i> Справочник принтерів</h1>
-    </div>
-    <div class="col-md-4 text-end">
-        <form method="POST" action="{{ url_for('import_printer_compatibility') }}" style="display:inline;" onsubmit="return confirm('Імпортувати сумісність принтерів та картриджів з бази даних?');">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-            <button type="submit" class="btn btn-info">
-                <i class="bi bi-upload"></i> Імпортувати сумісність
-            </button>
-        </form>
+    <div class="col-12">
+        <h1 class="mb-4"><i class="bi bi-printer"></i> Довідник принтерів</h1>
     </div>
 </div>
 
@@ -78,9 +70,20 @@
                                     {% endif %}
                                 </td>
                                 <td>
-                                    <a href="{{ url_for('printer_compatibility', printer_id=printer.id) }}" class="btn btn-sm btn-info">
-                                        <i class="bi bi-link"></i> Сумісність
-                                    </a>
+                                    <div class="btn-group" role="group">
+                                        <a href="{{ url_for('printer_compatibility', printer_id=printer.id) }}" class="btn btn-sm btn-info">
+                                            <i class="bi bi-link"></i> Сумісність
+                                        </a>
+                                        <button class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#editPrinterModal{{ printer.id }}">
+                                            <i class="bi bi-pencil"></i> Редагувати
+                                        </button>
+                                        <form method="POST" action="{{ url_for('delete_printer', printer_id=printer.id) }}" style="display:inline;" onsubmit="return confirm('Ви впевнені, що хочете видалити принтер {{ printer.model }}?');">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                            <button type="submit" class="btn btn-sm btn-danger">
+                                                <i class="bi bi-trash"></i> Видалити
+                                            </button>
+                                        </form>
+                                    </div>
                                 </td>
                             </tr>
                             {% endfor %}
@@ -94,5 +97,36 @@
         </div>
     </div>
 </div>
+
+<!-- Модальні вікна для редагування -->
+{% for printer in printers %}
+<div class="modal fade" id="editPrinterModal{{ printer.id }}" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Редагувати принтер</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('edit_printer', printer_id=printer.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Модель принтера</label>
+                        <input type="text" name="model" class="form-control" value="{{ printer.model }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Опис (опціонально)</label>
+                        <input type="text" name="description" class="form-control" value="{{ printer.description or '' }}">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
+                    <button type="submit" class="btn btn-primary">Зберегти</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
 {% endblock %}
 

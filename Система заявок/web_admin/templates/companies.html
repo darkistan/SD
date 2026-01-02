@@ -49,6 +49,7 @@
                                 <th>ID</th>
                                 <th>Назва</th>
                                 <th>Дата створення</th>
+                                <th>Дії</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -57,6 +58,19 @@
                                 <td>{{ company.id }}</td>
                                 <td><strong>{{ company.name }}</strong></td>
                                 <td>{{ company.created_at.strftime('%d.%m.%Y') if company.created_at else 'Невідомо' }}</td>
+                                <td>
+                                    <div class="btn-group" role="group">
+                                        <button class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#editCompanyModal{{ company.id }}">
+                                            <i class="bi bi-pencil"></i> Редагувати
+                                        </button>
+                                        <form method="POST" action="{{ url_for('delete_company', company_id=company.id) }}" style="display:inline;" onsubmit="return confirm('Ви впевнені, що хочете видалити компанію {{ company.name }}?');">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                            <button type="submit" class="btn btn-sm btn-danger">
+                                                <i class="bi bi-trash"></i> Видалити
+                                            </button>
+                                        </form>
+                                    </div>
+                                </td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -69,5 +83,32 @@
         </div>
     </div>
 </div>
+
+<!-- Модальні вікна для редагування -->
+{% for company in companies %}
+<div class="modal fade" id="editCompanyModal{{ company.id }}" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Редагувати компанію</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('edit_company', company_id=company.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Назва компанії</label>
+                        <input type="text" name="name" class="form-control" value="{{ company.name }}" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
+                    <button type="submit" class="btn btn-primary">Зберегти</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
 {% endblock %}
 

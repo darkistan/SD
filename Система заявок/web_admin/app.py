@@ -742,6 +742,27 @@ def update_user_company(user_id):
     return redirect(url_for('users'))
 
 
+@app.route('/users/<int:user_id>/toggle_notifications', methods=['POST'])
+@admin_required
+def toggle_user_notifications(user_id):
+    """Перемикання оповіщень користувача"""
+    with get_session() as session:
+        user = session.query(User).filter(User.user_id == user_id).first()
+        if user:
+            # Перемикаємо оповіщення (тільки для користувачів з Telegram, user_id > 0)
+            if user.user_id > 0:
+                user.notifications_enabled = not user.notifications_enabled
+                session.commit()
+                status = "увімкнено" if user.notifications_enabled else "вимкнено"
+                flash(f'Оповіщення для користувача {status}.', 'success')
+            else:
+                flash('Веб-користувачі не можуть отримувати оповіщення в Telegram.', 'warning')
+        else:
+            flash('Користувача не знайдено.', 'danger')
+    
+    return redirect(url_for('users'))
+
+
 @app.route('/users/update_full_name/<int:user_id>', methods=['POST'])
 @admin_required
 def update_user_full_name(user_id):

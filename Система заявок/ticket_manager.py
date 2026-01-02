@@ -8,6 +8,7 @@ from database import get_session
 from models import Ticket, TicketItem, User, Company, Log, Printer, CartridgeType
 from logger import logger
 from input_validator import input_validator
+from notification_manager import get_notification_manager
 
 
 class TicketManager:
@@ -106,6 +107,44 @@ class TicketManager:
                 # Логуємо зміну статусу
                 self._log_status_change(session, ticket.id, None, 'NEW', user_id if not admin_creator_id else admin_creator_id)
                 session.commit()
+                
+                # Відправляємо оповіщення користувачам з увімкненими оповіщеннями
+                # Примітка: оповіщення відправляються тільки схваленним користувачам (які є в таблиці User),
+                # користувачі з pending requests не отримають оповіщення, оскільки вони не мають записів в таблиці User
+                try:
+                    notification_manager = get_notification_manager()
+                    # Отримуємо всіх користувачів з увімкненими оповіщеннями (тільки Telegram користувачі)
+                    # Запит до таблиці User гарантує, що користувач вже схвалений
+                    notified_users = session.query(User).filter(
+                        User.notifications_enabled == True,
+                        User.user_id > 0  # Тільки Telegram користувачі
+                    ).all()
+                    
+                    # Отримуємо дані заявки для оповіщення
+                    user_name = user.full_name or user.username or f"User {user_id}"
+                    company_name = company.name
+                    
+                    # Формуємо список позицій з назвами
+                    ticket_items = []
+                    for item in ticket.items:
+                        item_dict = self._item_to_dict(item, session)
+                        ticket_items.append(item_dict)
+                    
+                    # Відправляємо оповіщення кожному користувачу
+                    for notified_user in notified_users:
+                        notification_manager.send_new_ticket_notification(
+                            user_id=notified_user.user_id,
+                            ticket_id=ticket.id,
+                            ticket_type=ticket_type,
+                            company_name=company_name,
+                            user_name=user_name,
+                            priority=priority,
+                            items=ticket_items,
+                            comment=comment
+                        )
+                except Exception as e:
+                    # Не блокуємо створення заявки, якщо оповіщення не вдалося відправити
+                    logger.log_error(f"Помилка відправки оповіщень про нову заявку {ticket.id}: {e}")
                 
                 return ticket.id
                 

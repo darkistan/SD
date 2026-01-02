@@ -210,6 +210,18 @@
                                         <button class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#companyModal{{ user.user_id }}">
                                             <i class="bi bi-building"></i> Компанія
                                         </button>
+                                        {% if user.user_id > 0 %}
+                                        <form method="POST" action="{{ url_for('toggle_user_notifications', user_id=user.user_id) }}" style="display:inline;">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                            <button type="submit" class="btn btn-sm {% if user.notifications_enabled %}btn-success{% else %}btn-secondary{% endif %}" title="{% if user.notifications_enabled %}Оповіщення увімкнено{% else %}Оповіщення вимкнено{% endif %}">
+                                                <i class="bi {% if user.notifications_enabled %}bi-bell-fill{% else %}bi-bell-slash{% endif %}"></i> Оповіщення
+                                            </button>
+                                        </form>
+                                        {% else %}
+                                        <button type="button" class="btn btn-sm btn-secondary" disabled title="Веб-користувачі не отримують оповіщення в Telegram">
+                                            <i class="bi bi-bell-slash"></i> Оповіщення
+                                        </button>
+                                        {% endif %}
                                         {% if user.user_id != 1 %}
                                         <form method="POST" action="{{ url_for('delete_user') }}" style="display:inline;" onsubmit="return confirm('Ви впевнені, що хочете видалити користувача {{ user.full_name or user.username or user.user_id }}?');">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>

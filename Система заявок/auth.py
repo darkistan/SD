@@ -7,6 +7,7 @@ from typing import List, Optional, Dict, Any
 from database import get_session
 from models import User, PendingRequest, Company
 from logger import logger
+from notification_manager import get_notification_manager
 
 
 class AuthManager:
@@ -65,6 +66,27 @@ class AuthManager:
                 session.commit()
                 
                 logger.log_access_request(user_id, username)
+                
+                # Відправляємо оповіщення користувачам з увімкненими оповіщеннями про новий запит на доступ
+                try:
+                    notification_manager = get_notification_manager()
+                    # Отримуємо всіх користувачів з увімкненими оповіщеннями (тільки Telegram користувачі)
+                    notified_users = session.query(User).filter(
+                        User.notifications_enabled == True,
+                        User.user_id > 0  # Тільки Telegram користувачі
+                    ).all()
+                    
+                    # Відправляємо оповіщення кожному користувачу
+                    for notified_user in notified_users:
+                        notification_manager.send_new_access_request_notification(
+                            user_id=notified_user.user_id,
+                            requesting_user_id=user_id,
+                            requesting_username=username
+                        )
+                except Exception as e:
+                    # Не блокуємо додавання запиту, якщо оповіщення не вдалося відправити
+                    logger.log_error(f"Помилка відправки оповіщень про новий запит на доступ від {user_id}: {e}")
+                
                 return True
                 
         except Exception as e:
@@ -97,6 +119,13 @@ class AuthManager:
                 if existing:
                     return False
                 
+                # Отримуємо назву компанії до commit (якщо вказана)
+                company_name = None
+                if company_id:
+                    company = session.query(Company).filter(Company.id == company_id).first()
+                    if company:
+                        company_name = company.name
+                
                 # Додаємо до дозволених
                 user = User(
                     user_id=user_id,
@@ -111,6 +140,18 @@ class AuthManager:
                 session.commit()
                 
                 logger.log_access_granted(user_id, username)
+                
+                # Відправляємо оповіщення про схвалення доступу
+                try:
+                    notification_manager = get_notification_manager()
+                    notification_manager.send_access_approval_notification(
+                        user_id=user_id,
+                        company_name=company_name
+                    )
+                except Exception as e:
+                    # Не блокуємо схвалення, якщо оповіщення не вдалося відправити
+                    logger.log_error(f"Помилка відправки оповіщення про схвалення доступу для {user_id}: {e}")
+                
                 return True
                 
         except Exception as e:
@@ -137,6 +178,15 @@ class AuthManager:
                 
                 if deleted > 0:
                     logger.log_access_denied(user_id, username)
+                    
+                    # Відправляємо оповіщення про відхилення доступу
+                    try:
+                        notification_manager = get_notification_manager()
+                        notification_manager.send_access_denial_notification(user_id=user_id)
+                    except Exception as e:
+                        # Не блокуємо відхилення, якщо оповіщення не вдалося відправити
+                        logger.log_error(f"Помилка відправки оповіщення про відхилення доступу для {user_id}: {e}")
+                    
                     return True
                 return False
                 

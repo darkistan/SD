@@ -26,6 +26,7 @@
                                 <th>№</th>
                                 <th>Тип</th>
                                 <th>Статус</th>
+                                <th>Пріоритет</th>
                                 <th>Компанія</th>
                                 <th>Користувач</th>
                                 <th>Дата створення</th>
@@ -38,6 +39,7 @@
                                 <td>#{{ ticket.id }}</td>
                                 <td>{{ ticket.ticket_type | ticket_type_ua }}</td>
                                 <td><span class="badge {{ ticket.status | status_badge_color(ticket.ticket_type) }}">{{ ticket.status | status_ua }}</span></td>
+                                <td><span class="badge {{ ticket.priority | priority_badge_color }}">{{ ticket.priority | priority_ua }}</span></td>
                                 <td>{{ ticket.company_name or 'Невідомо' }}</td>
                                 <td>{{ ticket.user_name or 'Невідомо' }}</td>
                                 <td>{{ ticket.created_at[:10] if ticket.created_at else 'Невідомо' }}</td>

@@ -244,13 +244,14 @@ class TicketStatus(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     code = Column(String(30), unique=True, nullable=False, index=True)  # NEW, ACCEPTED, etc.
     name_ua = Column(String(100), nullable=False)  # Назва українською
+    color = Column(String(50), nullable=True)  # Bootstrap клас кольору (bg-primary, bg-success, тощо)
     is_active = Column(Boolean, default=True, index=True)
     sort_order = Column(Integer, default=0, index=True)  # Порядок сортування
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     
     def __repr__(self):
-        return f"<TicketStatus(code='{self.code}', name_ua='{self.name_ua}')>"
+        return f"<TicketStatus(code='{self.code}', name_ua='{self.name_ua}', color='{self.color}')>"
 
 
 class BotConfig(Base):

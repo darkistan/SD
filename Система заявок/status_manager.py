@@ -32,6 +32,7 @@ class StatusManager:
                         'id': s.id,
                         'code': s.code,
                         'name_ua': s.name_ua,
+                        'color': s.color,
                         'is_active': s.is_active,
                         'sort_order': s.sort_order
                     }
@@ -61,6 +62,7 @@ class StatusManager:
                     'id': status.id,
                     'code': status.code,
                     'name_ua': status.name_ua,
+                    'color': status.color,
                     'is_active': status.is_active,
                     'sort_order': status.sort_order
                 }
@@ -81,7 +83,7 @@ class StatusManager:
         status = self.get_status_by_code(code)
         return status['name_ua'] if status else code
     
-    def add_status(self, code: str, name_ua: str, sort_order: int = 0, is_active: bool = True) -> Optional[int]:
+    def add_status(self, code: str, name_ua: str, sort_order: int = 0, is_active: bool = True, color: Optional[str] = None) -> Optional[int]:
         """
         Додавання нового статусу
         
@@ -90,6 +92,7 @@ class StatusManager:
             name_ua: Назва українською
             sort_order: Порядок сортування
             is_active: Чи активний
+            color: Bootstrap клас кольору (bg-primary, bg-success, тощо)
         
         Returns:
             ID створеного статусу або None
@@ -106,18 +109,19 @@ class StatusManager:
                     code=code,
                     name_ua=name_ua,
                     sort_order=sort_order,
-                    is_active=is_active
+                    is_active=is_active,
+                    color=color
                 )
                 session.add(status)
                 session.commit()
                 
-                logger.log_info(f"Додано статус: {code} - {name_ua}")
+                logger.log_info(f"Додано статус: {code} - {name_ua} (колір: {color})")
                 return status.id
         except Exception as e:
             logger.log_error(f"Помилка додавання статусу: {e}")
             return None
     
-    def update_status(self, status_id: int, name_ua: Optional[str] = None, sort_order: Optional[int] = None, is_active: Optional[bool] = None) -> bool:
+    def update_status(self, status_id: int, name_ua: Optional[str] = None, sort_order: Optional[int] = None, is_active: Optional[bool] = None, color: Optional[str] = None) -> bool:
         """
         Оновлення статусу
         
@@ -126,6 +130,7 @@ class StatusManager:
             name_ua: Нова назва (опціонально)
             sort_order: Новий порядок сортування (опціонально)
             is_active: Новий статус активності (опціонально)
+            color: Bootstrap клас кольору (опціонально)
         
         Returns:
             True якщо оновлено
@@ -142,6 +147,8 @@ class StatusManager:
                     status.sort_order = sort_order
                 if is_active is not None:
                     status.is_active = is_active
+                if color is not None:
+                    status.color = color if color else None
                 
                 session.commit()
                 logger.log_info(f"Оновлено статус ID: {status_id}")

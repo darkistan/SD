@@ -117,7 +117,16 @@ def item_type_ua_filter(item_type):
 @app.template_filter('status_badge_color')
 def status_badge_color_filter(status, ticket_type=None):
     """Визначення кольору badge для статусу заявки в залежності від типу"""
-    # Кольори для заявок на заправку (REFILL) - сині відтінки
+    # Спочатку перевіряємо, чи є колір в БД
+    try:
+        with get_session() as session:
+            status_obj = session.query(TicketStatus).filter(TicketStatus.code == status).first()
+            if status_obj and status_obj.color:
+                return status_obj.color
+    except Exception:
+        pass  # Якщо помилка, використовуємо fallback логіку
+    
+    # Fallback: старі кольори для заявок на заправку (REFILL) - сині відтінки
     # Кольори для інцидентів (INCIDENT) - фіолетові відтінки
     refill_colors = {
         'NEW': 'bg-primary',           # Синій
@@ -783,8 +792,40 @@ def mark_ticket_item_ok(ticket_id):
 @admin_required
 def users():
     """Управління користувачами"""
+    sort_by = request.args.get('sort_by', 'user_id')
+    sort_order = request.args.get('sort_order', 'asc')
+    
     with get_session() as session:
-        all_users = session.query(User).all()
+        # Застосовуємо сортування
+        if sort_by == 'company_id':
+            # Для компанії сортуємо по назві через join
+            query = session.query(User).outerjoin(Company, User.company_id == Company.id)
+            if sort_order == 'desc':
+                query = query.order_by(Company.name.desc().nulls_last(), User.user_id.asc())
+            else:
+                query = query.order_by(Company.name.asc().nulls_first(), User.user_id.asc())
+        else:
+            query = session.query(User)
+            
+            # Визначаємо поле для сортування
+            if sort_by == 'user_id':
+                order_field = User.user_id
+            elif sort_by == 'username':
+                order_field = User.username
+            elif sort_by == 'full_name':
+                order_field = User.full_name
+            elif sort_by == 'role':
+                order_field = User.role
+            else:
+                order_field = User.user_id
+            
+            # Застосовуємо порядок сортування
+            if sort_order == 'desc':
+                query = query.order_by(order_field.desc().nulls_last())
+            else:
+                query = query.order_by(order_field.asc().nulls_first())
+        
+        all_users = query.all()
         pending_requests = auth_manager.get_pending_requests()
         companies_list = session.query(Company).all()
         # Конвертуємо в список словників, щоб уникнути DetachedInstanceError
@@ -796,7 +837,9 @@ def users():
         return render_template('users.html',
                              users=all_users,
                              pending_requests=pending_requests,
-                             companies=companies)
+                             companies=companies,
+                             sort_by=sort_by,
+                             sort_order=sort_order)
 
 
 @app.route('/users/approve/<int:user_id>', methods=['POST'])
@@ -1693,13 +1736,14 @@ def add_status():
     name_ua = request.form.get('name_ua', '').strip()
     sort_order = request.form.get('sort_order', type=int, default=0)
     is_active = request.form.get('is_active') == '1'
+    color = request.form.get('color', '').strip() or None
     
     if not code or not name_ua:
         flash('Код та назва статусу не можуть бути порожніми.', 'danger')
         return redirect(url_for('statuses'))
     
     status_manager = get_status_manager()
-    status_id = status_manager.add_status(code, name_ua, sort_order, is_active)
+    status_id = status_manager.add_status(code, name_ua, sort_order, is_active, color)
     
     if status_id:
         flash('Статус додано.', 'success')
@@ -1716,13 +1760,14 @@ def edit_status(status_id):
     name_ua = request.form.get('name_ua', '').strip()
     sort_order = request.form.get('sort_order', type=int)
     is_active = request.form.get('is_active') == '1'
+    color = request.form.get('color', '').strip() or None
     
     if not name_ua:
         flash('Назва статусу не може бути порожньою.', 'danger')
         return redirect(url_for('statuses'))
     
     status_manager = get_status_manager()
-    success = status_manager.update_status(status_id, name_ua=name_ua, sort_order=sort_order, is_active=is_active)
+    success = status_manager.update_status(status_id, name_ua=name_ua, sort_order=sort_order, is_active=is_active, color=color)
     
     if success:
         flash('Статус оновлено.', 'success')

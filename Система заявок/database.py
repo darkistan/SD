@@ -96,7 +96,8 @@ class DatabaseManager:
             # Виконуємо міграції
             self.migrate_add_company_id_to_user()
             self.migrate_add_is_vip_to_user()
-            self.migrate_create_ticket_statuses()
+            self.migrate_add_color_to_ticket_status()  # Спочатку додаємо поле color
+            self.migrate_create_ticket_statuses()  # Потім створюємо/перевіряємо статуси
             self.migrate_add_printer_service_enabled_to_company()
             
             # Створюємо адміністратора за замовчуванням, якщо його немає
@@ -208,7 +209,9 @@ class DatabaseManager:
                     # Таблиця буде створена через Base.metadata.create_all
                     return
                 
-                existing_count = session.query(TicketStatus).count()
+                # Використовуємо raw SQL для перевірки, щоб уникнути проблем з відсутніми полями
+                result = session.execute(text("SELECT COUNT(*) FROM ticket_statuses"))
+                existing_count = result.scalar()
                 if existing_count > 0:
                     return  # Дані вже є
                 
@@ -256,6 +259,23 @@ class DatabaseManager:
                     logger.log_info("Додано колонку printer_service_enabled до companies")
         except Exception as e:
             logger.log_error(f"Помилка міграції додавання printer_service_enabled: {e}")
+    
+    def migrate_add_color_to_ticket_status(self):
+        """Міграція: додавання колонки color до таблиці ticket_statuses"""
+        try:
+            with self.engine.begin() as conn:
+                inspector = inspect(self.engine)
+                
+                if 'ticket_statuses' not in inspector.get_table_names():
+                    return
+                
+                columns = [col['name'] for col in inspector.get_columns('ticket_statuses')]
+                
+                if 'color' not in columns:
+                    conn.execute(text("ALTER TABLE ticket_statuses ADD COLUMN color VARCHAR(50)"))
+                    logger.log_info("Додано колонку color до ticket_statuses")
+        except Exception as e:
+            logger.log_error(f"Помилка міграції додавання color: {e}")
     
     @contextmanager
     def get_session(self, max_retries: int = 3) -> Generator[Session, None, None]:

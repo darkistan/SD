@@ -156,11 +156,71 @@
                     <table class="table table-striped">
                         <thead>
                             <tr>
-                                <th>User ID</th>
-                                <th>Username</th>
-                                <th>ПІБ</th>
-                                <th>Роль</th>
-                                <th>Компанія</th>
+                                <th>
+                                    {% if sort_by == 'user_id' %}
+                                        {% set next_order_id = 'asc' if sort_order == 'desc' else 'desc' %}
+                                    {% else %}
+                                        {% set next_order_id = 'asc' %}
+                                    {% endif %}
+                                    <a href="{{ url_for('users', sort_by='user_id', sort_order=next_order_id) }}" class="text-decoration-none text-reset">
+                                        User ID
+                                        {% if sort_by == 'user_id' %}
+                                            {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
+                                        {% endif %}
+                                    </a>
+                                </th>
+                                <th>
+                                    {% if sort_by == 'username' %}
+                                        {% set next_order_username = 'asc' if sort_order == 'desc' else 'desc' %}
+                                    {% else %}
+                                        {% set next_order_username = 'asc' %}
+                                    {% endif %}
+                                    <a href="{{ url_for('users', sort_by='username', sort_order=next_order_username) }}" class="text-decoration-none text-reset">
+                                        Username
+                                        {% if sort_by == 'username' %}
+                                            {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
+                                        {% endif %}
+                                    </a>
+                                </th>
+                                <th>
+                                    {% if sort_by == 'full_name' %}
+                                        {% set next_order_name = 'asc' if sort_order == 'desc' else 'desc' %}
+                                    {% else %}
+                                        {% set next_order_name = 'asc' %}
+                                    {% endif %}
+                                    <a href="{{ url_for('users', sort_by='full_name', sort_order=next_order_name) }}" class="text-decoration-none text-reset">
+                                        ПІБ
+                                        {% if sort_by == 'full_name' %}
+                                            {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
+                                        {% endif %}
+                                    </a>
+                                </th>
+                                <th>
+                                    {% if sort_by == 'role' %}
+                                        {% set next_order_role = 'asc' if sort_order == 'desc' else 'desc' %}
+                                    {% else %}
+                                        {% set next_order_role = 'asc' %}
+                                    {% endif %}
+                                    <a href="{{ url_for('users', sort_by='role', sort_order=next_order_role) }}" class="text-decoration-none text-reset">
+                                        Роль
+                                        {% if sort_by == 'role' %}
+                                            {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
+                                        {% endif %}
+                                    </a>
+                                </th>
+                                <th>
+                                    {% if sort_by == 'company_id' %}
+                                        {% set next_order_company = 'asc' if sort_order == 'desc' else 'desc' %}
+                                    {% else %}
+                                        {% set next_order_company = 'asc' %}
+                                    {% endif %}
+                                    <a href="{{ url_for('users', sort_by='company_id', sort_order=next_order_company) }}" class="text-decoration-none text-reset">
+                                        Компанія
+                                        {% if sort_by == 'company_id' %}
+                                            {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
+                                        {% endif %}
+                                    </a>
+                                </th>
                                 <th>Дії</th>
                             </tr>
                         </thead>
@@ -341,5 +401,24 @@
     </div>
 </div>
 {% endfor %}
+
+<style>
+table thead th a {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    text-decoration: none;
+    color: var(--bs-body-color) !important;
+}
+
+table thead th a:hover {
+    color: var(--bs-link-color) !important;
+    opacity: 0.8;
+}
+
+table thead th a i {
+    font-size: 0.8em;
+}
+</style>
 {% endblock %}
 

@@ -19,11 +19,24 @@
                 <form method="POST" action="{{ url_for('add_status') }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <div class="row">
-                        <div class="col-md-3">
+                        <div class="col-md-2">
                             <input type="text" name="code" class="form-control" placeholder="Код (напр. NEW)" required pattern="[A-Z_]+" title="Тільки великі літери та підкреслення">
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             <input type="text" name="name_ua" class="form-control" placeholder="Назва українською" required>
+                        </div>
+                        <div class="col-md-2">
+                            <select name="color" class="form-select">
+                                <option value="">Без кольору (за замовчуванням)</option>
+                                <option value="bg-primary">Синій (primary)</option>
+                                <option value="bg-secondary">Сірий (secondary)</option>
+                                <option value="bg-success">Зелений (success)</option>
+                                <option value="bg-danger">Червоний (danger)</option>
+                                <option value="bg-warning">Жовтий (warning)</option>
+                                <option value="bg-info">Блакитний (info)</option>
+                                <option value="bg-light">Світлий (light)</option>
+                                <option value="bg-dark">Темний (dark)</option>
+                            </select>
                         </div>
                         <div class="col-md-2">
                             <input type="number" name="sort_order" class="form-control" placeholder="Порядок" value="0">
@@ -60,6 +73,7 @@
                             <tr>
                                 <th>Код</th>
                                 <th>Назва</th>
+                                <th>Колір</th>
                                 <th>Порядок</th>
                                 <th>Статус</th>
                                 <th>Дії</th>
@@ -70,6 +84,13 @@
                             <tr>
                                 <td><code>{{ status.code }}</code></td>
                                 <td><strong>{{ status.name_ua }}</strong></td>
+                                <td>
+                                    {% if status.color %}
+                                    <span class="badge {{ status.color }}">{{ status.color }}</span>
+                                    {% else %}
+                                    <span class="text-muted">За замовчуванням</span>
+                                    {% endif %}
+                                </td>
                                 <td>{{ status.sort_order }}</td>
                                 <td>
                                     {% if status.is_active %}
@@ -116,6 +137,21 @@
                                                 <div class="mb-3">
                                                     <label class="form-label">Назва українською</label>
                                                     <input type="text" name="name_ua" class="form-control" value="{{ status.name_ua }}" required>
+                                                </div>
+                                                <div class="mb-3">
+                                                    <label class="form-label">Колір</label>
+                                                    <select name="color" class="form-select">
+                                                        <option value="">Без кольору (за замовчуванням)</option>
+                                                        <option value="bg-primary" {% if status.color == 'bg-primary' %}selected{% endif %}>Синій (primary)</option>
+                                                        <option value="bg-secondary" {% if status.color == 'bg-secondary' %}selected{% endif %}>Сірий (secondary)</option>
+                                                        <option value="bg-success" {% if status.color == 'bg-success' %}selected{% endif %}>Зелений (success)</option>
+                                                        <option value="bg-danger" {% if status.color == 'bg-danger' %}selected{% endif %}>Червоний (danger)</option>
+                                                        <option value="bg-warning" {% if status.color == 'bg-warning' %}selected{% endif %}>Жовтий (warning)</option>
+                                                        <option value="bg-info" {% if status.color == 'bg-info' %}selected{% endif %}>Блакитний (info)</option>
+                                                        <option value="bg-light" {% if status.color == 'bg-light' %}selected{% endif %}>Світлий (light)</option>
+                                                        <option value="bg-dark" {% if status.color == 'bg-dark' %}selected{% endif %}>Темний (dark)</option>
+                                                    </select>
+                                                    <small class="text-muted">Колір, який буде використовуватися для відображення статусу на сайті</small>
                                                 </div>
                                                 <div class="mb-3">
                                                     <label class="form-label">Порядок сортування</label>

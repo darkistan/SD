@@ -63,11 +63,11 @@ class InputValidator:
         
         ticket_type = ticket_type.strip().upper()
         
-        if ticket_type not in ["REFILL", "REPAIR"]:
+        if ticket_type not in ["REFILL", "REPAIR", "INCIDENT"]:
             logger.log_error(f"Невірний тип заявки: {ticket_type}")
             return {
                 "valid": False,
-                "message": "Невірний тип заявки. Доступні: REFILL, REPAIR"
+                "message": "Невірний тип заявки. Доступні: REFILL, REPAIR, INCIDENT"
             }
         
         return {

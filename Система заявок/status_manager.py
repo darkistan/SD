@@ -166,6 +166,12 @@ class StatusManager:
                 if not status:
                     return False
                 
+                # Захищені статуси, які не можна видаляти
+                protected_statuses = ['NEW', 'CLOSED', 'CANCELLED']
+                if status.code in protected_statuses:
+                    logger.log_warning(f"Спроба видалити захищений статус {status.code}. Видалення неможливе.")
+                    return False
+                
                 # Перевіряємо, чи використовується статус в заявках
                 from models import Ticket
                 tickets_count = session.query(Ticket).filter(Ticket.status == status.code).count()

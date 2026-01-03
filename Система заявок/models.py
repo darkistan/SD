@@ -45,6 +45,7 @@ class User(Base):
     approved_at = Column(DateTime, default=datetime.now)
     notifications_enabled = Column(Boolean, default=False)
     role = Column(String(20), default='user')  # admin, user
+    is_vip = Column(Boolean, default=False, index=True)  # VIP користувач
     full_name = Column(String(200))
     password_hash = Column(String(255), nullable=True)
     company_id = Column(Integer, ForeignKey('companies.id'), nullable=True, index=True)
@@ -166,55 +167,6 @@ class TicketItem(Base):
     
     def __repr__(self):
         return f"<TicketItem(id={self.id}, ticket_id={self.ticket_id}, item_type='{self.item_type}', quantity={self.quantity})>"
-
-
-class ReplacementFund(Base):
-    """Модель підменного фонду"""
-    __tablename__ = 'replacement_fund'
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    item_type = Column(String(20), nullable=False, index=True)  # CARTRIDGE / PRINTER
-    cartridge_type_id = Column(Integer, ForeignKey('cartridge_types.id'), nullable=True, index=True)
-    printer_model_id = Column(Integer, ForeignKey('printers.id'), nullable=True, index=True)
-    quantity_available = Column(Integer, default=0, nullable=False)
-    quantity_reserved = Column(Integer, default=0, nullable=False)
-    quantity_actual = Column(Integer, nullable=True)  # Фактична кількість після інвентаризації
-    last_inventory_date = Column(DateTime, nullable=True)
-    company_id = Column(Integer, ForeignKey('companies.id'), nullable=True, index=True)  # NULL = загальний фонд
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
-    
-    # Relationships
-    cartridge_type = relationship('CartridgeType', backref='replacement_fund_items')
-    printer_model = relationship('Printer', backref='replacement_fund_items')
-    company = relationship('Company', backref='replacement_fund_items')
-    
-    def __repr__(self):
-        return f"<ReplacementFund(id={self.id}, item_type='{self.item_type}', available={self.quantity_available}, actual={self.quantity_actual})>"
-
-
-class ReplacementFundMovement(Base):
-    """Модель журналу рухів підменного фонду"""
-    __tablename__ = 'replacement_fund_movements'
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    fund_item_id = Column(Integer, ForeignKey('replacement_fund.id'), nullable=False, index=True)
-    movement_type = Column(String(20), nullable=False, index=True)  # ISSUE / RETURN / WRITE_OFF / RECEIVE / INVENTORY
-    ticket_id = Column(Integer, ForeignKey('tickets.id'), nullable=True, index=True)
-    quantity = Column(Integer, nullable=False)
-    quantity_before = Column(Integer, nullable=True)  # Для інвентаризації
-    quantity_after = Column(Integer, nullable=True)  # Для інвентаризації
-    comment = Column(Text, nullable=True)
-    user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False, index=True)
-    created_at = Column(DateTime, default=datetime.now, index=True)
-    
-    # Relationships
-    fund_item = relationship('ReplacementFund', backref='movements')
-    ticket = relationship('Ticket', backref='fund_movements')
-    user = relationship('User', backref='fund_movements')
-    
-    def __repr__(self):
-        return f"<ReplacementFundMovement(id={self.id}, movement_type='{self.movement_type}', quantity={self.quantity})>"
 
 
 # Моделі з еталонного проекту (збережені)

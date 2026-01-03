@@ -82,12 +82,18 @@
                                     <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#editModal{{ status.id }}">
                                         <i class="bi bi-pencil"></i> Редагувати
                                     </button>
+                                    {% if status.code not in ['NEW', 'CLOSED', 'CANCELLED'] %}
                                     <form method="POST" action="{{ url_for('delete_status', status_id=status.id) }}" style="display:inline;" onsubmit="return confirm('Ви впевнені, що хочете видалити статус {{ status.code }}?');">
                                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                         <button type="submit" class="btn btn-sm btn-danger">
                                             <i class="bi bi-trash"></i> Видалити
                                         </button>
                                     </form>
+                                    {% else %}
+                                    <button type="button" class="btn btn-sm btn-danger" disabled title="Цей статус захищений від видалення">
+                                        <i class="bi bi-trash"></i> Видалити
+                                    </button>
+                                    {% endif %}
                                 </td>
                             </tr>
                             

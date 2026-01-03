@@ -113,17 +113,24 @@
                         </select>
                     </div>
                     <div class="mb-3">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" name="send_to_all" id="send_to_all" onchange="toggleRecipients()">
-                            <label class="form-check-label" for="send_to_all">
-                                Відправити всім користувачам з увімкненими оповіщеннями
+                        <label class="form-label">Тип вибору отримувачів <span class="text-danger">*</span></label>
+                        <div class="btn-group w-100" role="group" aria-label="Тип вибору отримувачів">
+                            <input type="radio" class="btn-check" name="recipient_type" id="recipient_type_users" value="users" checked onchange="toggleRecipientType()">
+                            <label class="btn btn-outline-primary" for="recipient_type_users">
+                                <i class="bi bi-people"></i> Окремі користувачі
+                            </label>
+                            
+                            <input type="radio" class="btn-check" name="recipient_type" id="recipient_type_companies" value="companies" onchange="toggleRecipientType()">
+                            <label class="btn btn-outline-primary" for="recipient_type_companies">
+                                <i class="bi bi-building"></i> По компаніях
                             </label>
                         </div>
                     </div>
-                    <div class="mb-3" id="recipients_select">
-                        <label class="form-label">Виберіть отримувачів</label>
+                    
+                    <div class="mb-3" id="recipients_users_select">
+                        <label class="form-label">Виберіть користувачів</label>
                         {% if users %}
-                        <select class="form-select" name="recipient_ids" multiple size="10" id="recipient_ids" required>
+                        <select class="form-select" name="recipient_ids" multiple size="10" id="recipient_ids">
                             {% for user in users %}
                             <option value="{{user['user_id']}}">
                                 {% if user.get('full_name') %}
@@ -141,6 +148,24 @@
                         </div>
                         {% endif %}
                     </div>
+                    
+                    <div class="mb-3" id="recipients_companies_select" style="display: none;">
+                        <label class="form-label">Виберіть компанії</label>
+                        {% if companies %}
+                        <select class="form-select" name="company_ids" multiple size="10" id="company_ids">
+                            {% for company in companies %}
+                            <option value="{{company['id']}}">
+                                {{company['name']}}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">Утримуйте Ctrl (Cmd на Mac) для вибору кількох компаній. Оголошення буде відправлено всім користувачам вибраних компаній.</small>
+                        {% else %}
+                        <div class="alert alert-warning">
+                            <i class="bi bi-exclamation-triangle"></i> Немає компаній для вибору.
+                        </div>
+                        {% endif %}
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
@@ -154,28 +179,41 @@
 </div>
 
 <script>
-function toggleRecipients() {
-    const sendToAll = document.getElementById('send_to_all').checked;
-    const recipientsSelect = document.getElementById('recipients_select');
+function toggleRecipientType() {
+    const recipientType = document.querySelector('input[name="recipient_type"]:checked').value;
+    const usersSelect = document.getElementById('recipients_users_select');
+    const companiesSelect = document.getElementById('recipients_companies_select');
     const recipientIds = document.getElementById('recipient_ids');
+    const companyIds = document.getElementById('company_ids');
     
-    if (sendToAll) {
-        recipientsSelect.style.display = 'none';
+    if (recipientType === 'companies') {
+        // По компаніях
+        usersSelect.style.display = 'none';
+        companiesSelect.style.display = 'block';
         if (recipientIds) {
             recipientIds.required = false;
-            // Знімаємо вибір з усіх опцій
             Array.from(recipientIds.options).forEach(option => option.selected = false);
         }
+        if (companyIds) {
+            companyIds.required = true;
+        }
     } else {
-        recipientsSelect.style.display = 'block';
+        // Окремі користувачі
+        usersSelect.style.display = 'block';
+        companiesSelect.style.display = 'none';
         if (recipientIds) {
             recipientIds.required = true;
+        }
+        if (companyIds) {
+            companyIds.required = false;
+            Array.from(companyIds.options).forEach(option => option.selected = false);
         }
     }
 }
 
 // Перевірка при завантаженні сторінки
 document.addEventListener('DOMContentLoaded', function() {
+    toggleRecipientType();
     const recipientIds = document.getElementById('recipient_ids');
     if (recipientIds && recipientIds.options.length === 0) {
         console.warn('Список користувачів порожній');

@@ -32,7 +32,7 @@ class TicketManager:
         Створення нової заявки
         
         Args:
-            ticket_type: Тип заявки (REFILL / REPAIR)
+            ticket_type: Тип заявки (REFILL / REPAIR / INCIDENT)
             company_id: ID компанії
             user_id: ID користувача-ініціатора
             items: Список позицій заявки [{'item_type': 'CARTRIDGE', 'cartridge_type_id': 1, 'printer_model_id': 1, 'quantity': 2}, ...]
@@ -65,6 +65,11 @@ class TicketManager:
                 if not user:
                     logger.log_error(f"Користувач {user_id} не знайдено")
                     return None
+                
+                # Якщо користувач VIP, автоматично встановлюємо HIGH пріоритет
+                if user.is_vip:
+                    priority = 'HIGH'
+                    logger.log_info(f"Користувач {user_id} є VIP, встановлено HIGH пріоритет для заявки")
                 
                 # Перевіряємо чи існує компанія
                 company = session.query(Company).filter(Company.id == company_id).first()
@@ -261,6 +266,122 @@ class TicketManager:
             logger.log_error(f"Помилка зміни пріоритету заявки {ticket_id}: {e}")
             return False
     
+    def change_author(
+        self,
+        ticket_id: int,
+        new_user_id: int,
+        admin_id: int
+    ) -> bool:
+        """
+        Зміна автора заявки (тільки для адміністратора)
+        
+        Args:
+            ticket_id: ID заявки
+            new_user_id: ID нового автора
+            admin_id: ID адміністратора
+            
+        Returns:
+            True якщо автора змінено
+        """
+        try:
+            with get_session() as session:
+                ticket = session.query(Ticket).filter(Ticket.id == ticket_id).first()
+                if not ticket:
+                    logger.log_error(f"Заявка {ticket_id} не знайдена")
+                    return False
+                
+                # Перевіряємо, чи існує новий користувач
+                new_user = session.query(User).filter(User.user_id == new_user_id).first()
+                if not new_user:
+                    logger.log_error(f"Користувач {new_user_id} не знайдений")
+                    return False
+                
+                old_user_id = ticket.user_id
+                ticket.user_id = new_user_id
+                ticket.updated_at = datetime.now()
+                
+                # Логуємо зміну автора
+                old_user_name = session.query(User).filter(User.user_id == old_user_id).first()
+                old_name = old_user_name.full_name or old_user_name.username or str(old_user_id) if old_user_name else str(old_user_id)
+                new_name = new_user.full_name or new_user.username or str(new_user_id)
+                
+                message = f"Заявка ID: {ticket_id} | Автор змінено: {old_name} (ID: {old_user_id}) → {new_name} (ID: {new_user_id})"
+                log = Log(
+                    timestamp=datetime.now(),
+                    level='INFO',
+                    message=message,
+                    user_id=admin_id,
+                    command='CHANGE_AUTHOR'
+                )
+                session.add(log)
+                session.commit()
+                
+                logger.log_info(f"Автора заявки {ticket_id} змінено з {old_user_id} на {new_user_id} адміністратором {admin_id}")
+                
+                return True
+                
+        except Exception as e:
+            logger.log_error(f"Помилка зміни автора заявки {ticket_id}: {e}")
+            return False
+    
+    def change_company(
+        self,
+        ticket_id: int,
+        new_company_id: int,
+        admin_id: int
+    ) -> bool:
+        """
+        Зміна компанії заявки (тільки для адміністратора)
+        
+        Args:
+            ticket_id: ID заявки
+            new_company_id: ID нової компанії
+            admin_id: ID адміністратора
+            
+        Returns:
+            True якщо компанію змінено
+        """
+        try:
+            with get_session() as session:
+                ticket = session.query(Ticket).filter(Ticket.id == ticket_id).first()
+                if not ticket:
+                    logger.log_error(f"Заявка {ticket_id} не знайдена")
+                    return False
+                
+                # Перевіряємо, чи існує нова компанія
+                new_company = session.query(Company).filter(Company.id == new_company_id).first()
+                if not new_company:
+                    logger.log_error(f"Компанія {new_company_id} не знайдена")
+                    return False
+                
+                old_company_id = ticket.company_id
+                ticket.company_id = new_company_id
+                ticket.updated_at = datetime.now()
+                
+                # Логуємо зміну компанії
+                old_company_name = session.query(Company).filter(Company.id == old_company_id).first()
+                old_name = old_company_name.name if old_company_name else f"ID: {old_company_id}"
+                new_name = new_company.name
+                
+                message = f"Заявка ID: {ticket_id} | Компанію змінено: {old_name} (ID: {old_company_id}) → {new_name} (ID: {new_company_id})"
+                log = Log(
+                    timestamp=datetime.now(),
+                    level='INFO',
+                    message=message,
+                    user_id=admin_id,
+                    command='CHANGE_COMPANY'
+                )
+                session.add(log)
+                session.commit()
+                
+                logger.log_info(f"Компанію заявки {ticket_id} змінено з {old_company_id} на {new_company_id} адміністратором {admin_id}")
+                
+                return True
+                
+        except Exception as e:
+            logger.log_error(f"Помилка зміни компанії заявки {ticket_id}: {e}")
+            return False
+    
     def get_ticket(self, ticket_id: int) -> Optional[Dict[str, Any]]:
         """
         Отримання заявки за ID
@@ -290,6 +411,8 @@ class TicketManager:
         ticket_type: Optional[str] = None,
         date_from: Optional[datetime] = None,
         date_to: Optional[datetime] = None,
+        sort_by: Optional[str] = None,
+        sort_order: str = 'desc',
         limit: int = 100
     ) -> List[Dict[str, Any]]:
         """
@@ -324,7 +447,26 @@ class TicketManager:
                     date_to_end = date_to + timedelta(days=1)
                     query = query.filter(Ticket.created_at < date_to_end)
                 
-                tickets = query.order_by(Ticket.created_at.desc()).limit(limit).all()
+                # Сортування
+                order_column = None
+                if sort_by == 'id':
+                    order_column = Ticket.id
+                elif sort_by == 'ticket_type':
+                    order_column = Ticket.ticket_type
+                elif sort_by == 'status':
+                    order_column = Ticket.status
+                elif sort_by == 'priority':
+                    order_column = Ticket.priority
+                elif sort_by == 'created_at':
+                    order_column = Ticket.created_at
+                else:
+                    # За замовчуванням сортуємо по даті створення
+                    order_column = Ticket.created_at
+                
+                if sort_order == 'asc':
+                    tickets = query.order_by(order_column.asc()).limit(limit).all()
+                else:
+                    tickets = query.order_by(order_column.desc()).limit(limit).all()
                 
                 return [self._ticket_to_dict(ticket, session) for ticket in tickets]
                 
@@ -340,6 +482,8 @@ class TicketManager:
         priority: Optional[str] = None,
         date_from: Optional[datetime] = None,
         date_to: Optional[datetime] = None,
+        sort_by: Optional[str] = None,
+        sort_order: str = 'desc',
         limit: int = 1000
     ) -> List[Dict[str, Any]]:
         """
@@ -381,7 +525,26 @@ class TicketManager:
                     date_to_end = date_to + timedelta(days=1)
                     query = query.filter(Ticket.created_at < date_to_end)
                 
-                tickets = query.order_by(Ticket.created_at.desc()).limit(limit).all()
+                # Сортування
+                order_column = None
+                if sort_by == 'id':
+                    order_column = Ticket.id
+                elif sort_by == 'ticket_type':
+                    order_column = Ticket.ticket_type
+                elif sort_by == 'status':
+                    order_column = Ticket.status
+                elif sort_by == 'priority':
+                    order_column = Ticket.priority
+                elif sort_by == 'created_at':
+                    order_column = Ticket.created_at
+                else:
+                    # За замовчуванням сортуємо по даті створення
+                    order_column = Ticket.created_at
+                
+                if sort_order == 'asc':
+                    tickets = query.order_by(order_column.asc()).limit(limit).all()
+                else:
+                    tickets = query.order_by(order_column.desc()).limit(limit).all()
                 
                 return [self._ticket_to_dict(ticket, session) for ticket in tickets]
                 
@@ -403,6 +566,7 @@ class TicketManager:
             'company_name': company.name if company else None,
             'user_id': ticket.user_id,
             'user_name': user.full_name or user.username if user else None,
+            'user_is_vip': user.is_vip if user else False,
             'admin_creator_id': ticket.admin_creator_id,
             'comment': ticket.comment,
             'admin_comment': ticket.admin_comment,
@@ -496,6 +660,83 @@ class TicketManager:
             session.add(log)
         except Exception as e:
             logger.log_error(f"Помилка логування зміни статусу: {e}")
+    
+    def get_cartridge_statistics_by_company(
+        self,
+        date_from: Optional[datetime] = None,
+        date_to: Optional[datetime] = None
+    ) -> Dict[int, Dict[str, Any]]:
+        """
+        Отримання статистики по картриджам по компаніях та користувачам
+        
+        Args:
+            date_from: Початкова дата періоду (за замовчуванням - початок поточного місяця)
+            date_to: Кінцева дата періоду (за замовчуванням - сьогодні)
+            
+        Returns:
+            Словник зі статистикою: {company_id: {'company_name': str, 'users': {user_id: {'user_name': str, 'cartridge_count': int}}}}
+        """
+        try:
+            # Встановлюємо дати за замовчуванням
+            if date_from is None:
+                today = datetime.now()
+                date_from = datetime(today.year, today.month, 1)
+            if date_to is None:
+                date_to = datetime.now()
+            
+            with get_session() as session:
+                # Отримуємо заявки типу REFILL за період
+                tickets = session.query(Ticket).filter(
+                    Ticket.ticket_type == 'REFILL',
+                    Ticket.created_at >= date_from,
+                    Ticket.created_at <= date_to
+                ).all()
+                
+                # Структура для збереження статистики
+                statistics = {}
+                
+                for ticket in tickets:
+                    company_id = ticket.company_id
+                    user_id = ticket.user_id
+                    
+                    # Отримуємо назву компанії
+                    if company_id not in statistics:
+                        company = session.query(Company).filter(Company.id == company_id).first()
+                        company_name = company.name if company else f"Компанія #{company_id}"
+                        statistics[company_id] = {
+                            'company_name': company_name,
+                            'users': {}
+                        }
+                    
+                    # Отримуємо ім'я користувача
+                    if user_id not in statistics[company_id]['users']:
+                        user = session.query(User).filter(User.user_id == user_id).first()
+                        user_name = user.full_name if user and user.full_name else (user.username if user else f"User {user_id}")
+                        statistics[company_id]['users'][user_id] = {
+                            'user_name': user_name,
+                            'cartridge_count': 0
+                        }
+                    
+                    # Підраховуємо картриджі в заявці
+                    for item in ticket.items:
+                        if item.item_type == 'CARTRIDGE':
+                            statistics[company_id]['users'][user_id]['cartridge_count'] += item.quantity
+                
+                # Видаляємо компанії без картриджів
+                companies_to_remove = []
+                for company_id, data in statistics.items():
+                    total_cartridges = sum(user_data['cartridge_count'] for user_data in data['users'].values())
+                    if total_cartridges == 0:
+                        companies_to_remove.append(company_id)
+                
+                for company_id in companies_to_remove:
+                    del statistics[company_id]
+                
+                return statistics
+                
+        except Exception as e:
+            logger.log_error(f"Помилка отримання статистики по картриджам: {e}")
+            return {}
 
 
 # Глобальний екземпляр менеджера заявок

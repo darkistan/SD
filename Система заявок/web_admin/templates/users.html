@@ -187,6 +187,9 @@
                                     {% else %}
                                     <span class="badge bg-info">Користувач</span>
                                     {% endif %}
+                                    {% if user.is_vip %}
+                                    <span class="badge bg-warning text-dark ms-1" title="VIP користувач - заявки з високим пріоритетом">⭐ VIP</span>
+                                    {% endif %}
                                 </td>
                                 <td>
                                     {% if user.company_id %}
@@ -222,6 +225,12 @@
                                             <i class="bi bi-bell-slash"></i> Оповіщення
                                         </button>
                                         {% endif %}
+                                        <form method="POST" action="{{ url_for('toggle_user_vip', user_id=user.user_id) }}" style="display:inline;">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                            <button type="submit" class="btn btn-sm {% if user.is_vip %}btn-warning{% else %}btn-outline-warning{% endif %}" title="{% if user.is_vip %}VIP статус увімкнено - заявки з високим пріоритетом{% else %}Надати VIP статус{% endif %}">
+                                                <i class="bi bi-star{% if user.is_vip %}-fill{% endif %}"></i> VIP
+                                            </button>
+                                        </form>
                                         {% if user.user_id != 1 %}
                                         <form method="POST" action="{{ url_for('delete_user') }}" style="display:inline;" onsubmit="return confirm('Ви впевнені, що хочете видалити користувача {{ user.full_name or user.username or user.user_id }}?');">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>

@@ -21,6 +21,8 @@
         <div class="card">
             <div class="card-body">
                 <form method="GET" action="{{ url_for('tickets') }}" class="row g-3">
+                    <input type="hidden" name="sort_by" value="{{ sort_by }}">
+                    <input type="hidden" name="sort_order" value="{{ sort_order }}">
                     {% if is_admin %}
                     <div class="col-md-2">
                         <label class="form-label">Компанія</label>
@@ -93,25 +95,102 @@
                     <table class="table table-striped">
                         <thead>
                             <tr>
-                                <th>№</th>
-                                <th>Тип</th>
-                                <th>Статус</th>
-                                <th>Пріоритет</th>
+                                <th>
+                                    {% if sort_by == 'id' %}
+                                        {% set next_order_id = 'asc' if sort_order == 'desc' else 'desc' %}
+                                    {% else %}
+                                        {% set next_order_id = 'desc' %}
+                                    {% endif %}
+                                    <a href="{{ url_for('tickets', sort_by='id', sort_order=next_order_id, company_id=selected_company_id, status=selected_status, ticket_type=selected_ticket_type, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-reset">
+                                        №
+                                        {% if sort_by == 'id' %}
+                                            {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
+                                        {% endif %}
+                                    </a>
+                                </th>
+                                <th>
+                                    {% if sort_by == 'ticket_type' %}
+                                        {% set next_order_type = 'asc' if sort_order == 'desc' else 'desc' %}
+                                    {% else %}
+                                        {% set next_order_type = 'desc' %}
+                                    {% endif %}
+                                    <a href="{{ url_for('tickets', sort_by='ticket_type', sort_order=next_order_type, company_id=selected_company_id, status=selected_status, ticket_type=selected_ticket_type, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-dark">
+                                        Тип
+                                        {% if sort_by == 'ticket_type' %}
+                                            {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
+                                        {% endif %}
+                                    </a>
+                                </th>
+                                <th>
+                                    {% if sort_by == 'status' %}
+                                        {% set next_order_status = 'asc' if sort_order == 'desc' else 'desc' %}
+                                    {% else %}
+                                        {% set next_order_status = 'desc' %}
+                                    {% endif %}
+                                    <a href="{{ url_for('tickets', sort_by='status', sort_order=next_order_status, company_id=selected_company_id, status=selected_status, ticket_type=selected_ticket_type, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-dark">
+                                        Статус
+                                        {% if sort_by == 'status' %}
+                                            {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
+                                        {% endif %}
+                                    </a>
+                                </th>
+                                <th>
+                                    {% if sort_by == 'priority' %}
+                                        {% set next_order_priority = 'asc' if sort_order == 'desc' else 'desc' %}
+                                    {% else %}
+                                        {% set next_order_priority = 'desc' %}
+                                    {% endif %}
+                                    <a href="{{ url_for('tickets', sort_by='priority', sort_order=next_order_priority, company_id=selected_company_id, status=selected_status, ticket_type=selected_ticket_type, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-dark">
+                                        Пріоритет
+                                        {% if sort_by == 'priority' %}
+                                            {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
+                                        {% endif %}
+                                    </a>
+                                </th>
                                 <th>Компанія</th>
                                 <th>Користувач</th>
-                                <th>Дата створення</th>
+                                <th>
+                                    {% if sort_by == 'created_at' %}
+                                        {% set next_order_date = 'asc' if sort_order == 'desc' else 'desc' %}
+                                    {% else %}
+                                        {% set next_order_date = 'desc' %}
+                                    {% endif %}
+                                    <a href="{{ url_for('tickets', sort_by='created_at', sort_order=next_order_date, company_id=selected_company_id, status=selected_status, ticket_type=selected_ticket_type, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-dark">
+                                        Дата створення
+                                        {% if sort_by == 'created_at' %}
+                                            {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
+                                        {% endif %}
+                                    </a>
+                                </th>
                                 <th>Дії</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for ticket in tickets %}
-                            <tr>
+                            <tr {% if ticket.status == 'CLOSED' or ticket.status == 'CANCELLED' %}class="ticket-closed"{% endif %}>
                                 <td>#{{ ticket.id }}</td>
                                 <td>{{ ticket.ticket_type | ticket_type_ua }}</td>
-                                <td><span class="badge {{ ticket.status | status_badge_color(ticket.ticket_type) }}">{{ ticket.status | status_ua }}</span></td>
-                                <td><span class="badge {{ ticket.priority | priority_badge_color }}">{{ ticket.priority | priority_ua }}</span></td>
+                                <td>
+                                    {% if ticket.status == 'CLOSED' or ticket.status == 'CANCELLED' %}
+                                    <span class="badge bg-secondary text-muted">{{ ticket.status | status_ua }}</span>
+                                    {% else %}
+                                    <span class="badge {{ ticket.status | status_badge_color(ticket.ticket_type) }}">{{ ticket.status | status_ua }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if ticket.status == 'CLOSED' or ticket.status == 'CANCELLED' %}
+                                    <span class="badge bg-secondary text-muted">{{ ticket.priority | priority_ua }}</span>
+                                    {% else %}
+                                    <span class="badge {{ ticket.priority | priority_badge_color }}">{{ ticket.priority | priority_ua }}</span>
+                                    {% endif %}
+                                </td>
                                 <td>{{ ticket.company_name or 'Невідомо' }}</td>
-                                <td>{{ ticket.user_name or 'Невідомо' }}</td>
+                                <td>
+                                    {{ ticket.user_name or 'Невідомо' }}
+                                    {% if ticket.user_is_vip %}
+                                    <span class="badge bg-warning text-dark ms-1" title="VIP користувач - заявки з високим пріоритетом">⭐ VIP</span>
+                                    {% endif %}
+                                </td>
                                 <td>{{ ticket.created_at[:10] if ticket.created_at else 'Невідомо' }}</td>
                                 <td>
                                     <a href="{{ url_for('ticket_detail', ticket_id=ticket.id) }}" class="btn btn-sm btn-primary">
@@ -130,6 +209,62 @@
         </div>
     </div>
 </div>
+
+<style>
+.ticket-closed {
+    opacity: 0.5;
+    color: #6c757d !important;
+}
+
+.ticket-closed td {
+    text-decoration: line-through;
+    color: #6c757d !important;
+}
+
+.ticket-closed .badge {
+    background-color: #6c757d !important;
+    color: #ffffff !important;
+}
+
+.ticket-closed .btn {
+    opacity: 0.6;
+}
+
+table thead th a {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    text-decoration: none;
+}
+
+/* Для світлої теми - темний текст */
+[data-bs-theme="light"] table thead th a,
+html[data-bs-theme="light"] table thead th a {
+    color: #212529 !important;
+}
+
+/* Для темної теми - світлий колір як у шапці (navbar-dark) */
+[data-bs-theme="dark"] table thead th a,
+html[data-bs-theme="dark"] table thead th a,
+body[data-bs-theme="dark"] table thead th a {
+    color: #ffffff !important;
+}
+
+table thead th a:hover {
+    color: #0d6efd !important;
+    opacity: 0.8;
+}
+
+[data-bs-theme="dark"] table thead th a:hover,
+html[data-bs-theme="dark"] table thead th a:hover,
+body[data-bs-theme="dark"] table thead th a:hover {
+    color: #6ea8fe !important;
+}
+
+table thead th a i {
+    font-size: 0.8em;
+}
+</style>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {

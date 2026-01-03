@@ -259,6 +259,26 @@ class PollManager:
                 author = session.query(User).filter(User.user_id == poll.author_id).first()
                 author_name = author.full_name if author and author.full_name else poll.author_username or f"ID: {poll.author_id}"
                 
+                # Для неанонімних опитувань отримуємо список хто як проголосував
+                user_responses = []
+                if not poll.is_anonymous:
+                    # Отримуємо всі відповіді з іменами користувачів
+                    user_responses_data = session.query(PollResponse, User, PollOption).join(
+                        User, PollResponse.user_id == User.user_id
+                    ).join(
+                        PollOption, PollResponse.option_id == PollOption.id
+                    ).filter(
+                        PollResponse.poll_id == poll_id
+                    ).order_by(PollResponse.responded_at).all()
+                    
+                    for response, user, option in user_responses_data:
+                        user_responses.append({
+                            'user_id': user.user_id,
+                            'user_name': user.full_name or user.username or f"User {user.user_id}",
+                            'option_text': option.option_text,
+                            'responded_at': response.responded_at
+                        })
+                
                 return {
                     'poll_id': poll.id,
                     'question': poll.question,
@@ -267,8 +287,10 @@ class PollManager:
                     'created_at': poll.created_at,
                     'closed_at': poll.closed_at,
                     'is_closed': poll.is_closed,
+                    'is_anonymous': poll.is_anonymous,
                     'total_votes': total_votes,
-                    'results': results
+                    'results': results,
+                    'user_responses': user_responses  # Список відповідей користувачів для неанонімних опитувань
                 }
         except Exception as e:
             logger.log_error(f"Помилка отримання результатів опитування: {e}")
@@ -340,7 +362,7 @@ class PollManager:
                 report_text += f"{bar} {result['percentage']}% ({result['votes']} голосів)\n"
             
             report_text += f"\n📊 <b>Всього голосів:</b> {results['total_votes']}\n"
-            report_text += f"👤 <b>Автор:</b> {results['author_name']}\n"
+            report_text += f"\n👤 <b>Автор:</b> {results['author_name']}\n"
             report_text += f"📅 <b>Створено:</b> {results['created_at'].strftime('%d.%m.%Y %H:%M')}\n"
             if results.get('closed_at'):
                 report_text += f"🔒 <b>Закрито:</b> {results['closed_at'].strftime('%d.%m.%Y %H:%M')}"

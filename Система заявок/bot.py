@@ -51,7 +51,8 @@ def get_ticket_type_ua(ticket_type: str) -> str:
     """Переклад типу заявки на українську мову"""
     type_translations = {
         'REFILL': 'Заправка картриджів',
-        'REPAIR': 'Ремонт принтера'
+        'REPAIR': 'Ремонт принтера',
+        'INCIDENT': 'Інцидент'
     }
     return type_translations.get(ticket_type, ticket_type)
 
@@ -164,6 +165,7 @@ async def new_ticket_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("🖨️ Заправка картриджів", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "ticket_type:REFILL"))],
         [InlineKeyboardButton("🔧 Ремонт принтера", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "ticket_type:REPAIR"))],
+        [InlineKeyboardButton("⚠️ Інцидент", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "ticket_type:INCIDENT"))],
         [InlineKeyboardButton("❌ Скасувати", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cancel_ticket"))]
     ])
     
@@ -256,6 +258,11 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     
     user_id = query.from_user.id
     
+    # Обробка натискання на неактивні кнопки після голосування
+    if query.data == 'poll_already_voted':
+        await query.answer("ℹ️ Ви вже проголосували в цьому опитуванні.", show_alert=False)
+        return
+    
     # Обробка голосування в опитуваннях (не проходить через CSRF)
     if query.data and query.data.startswith("poll_vote_"):
         # Формат: poll_vote_{poll_id}_{option_id}
@@ -270,6 +277,70 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 
                 if success:
                     await query.answer("✅ Ваш голос зафіксовано!", show_alert=False)
+                    
+                    # Оновлюємо повідомлення, щоб показати, що голос зараховано
+                    try:
+                        from database import get_session
+                        from models import Poll, PollOption, PollResponse
+                        
+                        with get_session() as session:
+                            poll = session.query(Poll).filter(Poll.id == poll_id).first()
+                            if not poll:
+                                return
+                            
+                            # Отримуємо варіанти відповіді
+                            options = session.query(PollOption).filter(
+                                PollOption.poll_id == poll_id
+                            ).order_by(PollOption.option_order).all()
+                            
+                            # Перевіряємо, яку відповідь обрав користувач
+                            user_response = session.query(PollResponse).filter(
+                                PollResponse.poll_id == poll_id,
+                                PollResponse.user_id == user_id
+                            ).first()
+                            
+                            # Формуємо текст опитування з підтвердженням
+                            poll_text = f"📋 <b>Опитування</b>"
+                            if poll.is_anonymous:
+                                poll_text += " 🔒 <i>(Анонімне)</i>"
+                            poll_text += f"\n\n❓ <b>{poll.question}</b>\n\n"
+                            
+                            if poll.expires_at:
+                                poll_text += f"⏰ <b>Термін дії:</b> до {poll.expires_at.strftime('%d.%m.%Y %H:%M')}\n\n"
+                            
+                            # Додаємо підтвердження, що голос зараховано
+                            if user_response:
+                                selected_option = next((opt for opt in options if opt.id == user_response.option_id), None)
+                                if selected_option:
+                                    poll_text += f"✅ <b>Ваш голос зараховано!</b>\n"
+                                    poll_text += f"Ви обрали: <b>{selected_option.option_text}</b>\n\n"
+                            
+                            poll_text += "Оберіть варіант відповіді:"
+                            
+                            # Створюємо неактивні кнопки (без callback_data)
+                            keyboard_buttons = []
+                            for option in options:
+                                # Якщо це обрана відповідь, показуємо її як обрану
+                                if user_response and option.id == user_response.option_id:
+                                    keyboard_buttons.append([{
+                                        'text': f"✅ {option.option_text} (Ваш вибір)",
+                                        'callback_data': 'poll_already_voted'  # Неактивна кнопка
+                                    }])
+                                else:
+                                    # Інші кнопки також неактивні після голосування
+                                    keyboard_buttons.append([{
+                                        'text': f"⚪ {option.option_text}",
+                                        'callback_data': 'poll_already_voted'  # Неактивна кнопка
+                                    }])
+                            
+                            # Оновлюємо повідомлення
+                            await query.edit_message_text(
+                                poll_text,
+                                reply_markup={'inline_keyboard': keyboard_buttons},
+                                parse_mode='HTML'
+                            )
+                    except Exception as e:
+                        logger.log_error(f"Помилка оновлення повідомлення опитування: {e}")
                 else:
                     await query.answer("❌ Помилка. Опитування може бути закрите або не знайдене.", show_alert=True)
                 return
@@ -316,7 +387,8 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             "• /my_tickets - мої заявки\n\n"
             "<b>Типи заявок:</b>\n"
             "• Заправка картриджів - заправка картриджів для принтерів\n"
-            "• Ремонт принтера - ремонт принтерів\n\n"
+            "• Ремонт принтера - ремонт принтерів\n"
+            "• Інцидент - інші технічні проблеми\n\n"
             "Всі зміни статусів заявок надсилаються автоматично."
         )
         await query.edit_message_text(help_text, parse_mode='HTML')
@@ -348,6 +420,31 @@ async def handle_ticket_type_selection(update: Update, context: ContextTypes.DEF
         return
     
     ticket_creation_state[user_id]['ticket_type'] = ticket_type
+    
+    # Для інцидентів пропускаємо вибір принтера та картриджів
+    if ticket_type == "INCIDENT":
+        ticket_creation_state[user_id]['step'] = 'comment'
+        ticket_creation_state[user_id]['printer_id'] = None
+        ticket_creation_state[user_id]['items'] = []
+        
+        type_name = "Інцидент"
+        message_text = (
+            f"📝 <b>Створення заявки: {type_name}</b>\n\n"
+            f"Опишіть проблему, яка не стосується принтерів та заправок:\n\n"
+            f"Наприклад:\n"
+            f"• Проблема з мережею\n"
+            f"• Проблема з програмним забезпеченням\n"
+            f"• Інша технічна проблема"
+        )
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("❌ Скасувати", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cancel_ticket"))]
+        ])
+        
+        await update.callback_query.edit_message_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+        return
+    
+    # Для REFILL та REPAIR - вибір принтера
     ticket_creation_state[user_id]['step'] = 'printer'
     
     # Отримуємо список принтерів
@@ -567,7 +664,13 @@ async def handle_comment_input(update: Update, context: ContextTypes.DEFAULT_TYP
     ticket_creation_state[user_id]['comment'] = comment[:1000]  # Обмежуємо довжину
     
     # Для ремонту потрібно додати позицію з принтером, якщо її немає
+    # Для інцидентів принтер не потрібен
     ticket_type = ticket_creation_state[user_id].get('ticket_type')
+    if ticket_type == 'INCIDENT':
+        # Інциденти не потребують принтерів та картриджів
+        await create_ticket_from_state(update, context, user_id)
+        return
+    
     if ticket_type == 'REPAIR':
         printer_id = ticket_creation_state[user_id].get('printer_id')
         if printer_id:
@@ -600,7 +703,19 @@ async def create_ticket_from_state(update: Update, context: ContextTypes.DEFAULT
     state = ticket_creation_state[user_id]
     
     # Перевіряємо необхідні дані
-    if not state.get('ticket_type') or not state.get('items'):
+    ticket_type = state.get('ticket_type')
+    if not ticket_type:
+        error_msg = "❌ Помилка. Тип заявки не вказано."
+        if hasattr(update, 'message') and update.message:
+            await update.message.reply_text(error_msg)
+        elif hasattr(update, 'callback_query') and update.callback_query:
+            await update.callback_query.edit_message_text(error_msg)
+        del ticket_creation_state[user_id]
+        return
+    
+    # Для інцидентів items не обов'язкові (можуть бути порожніми)
+    # Для інших типів заявок items обов'язкові
+    if ticket_type != 'INCIDENT' and not state.get('items'):
         error_msg = "❌ Помилка. Недостатньо даних для створення заявки."
         if hasattr(update, 'message') and update.message:
             await update.message.reply_text(error_msg)
@@ -626,11 +741,13 @@ async def create_ticket_from_state(update: Update, context: ContextTypes.DEFAULT
                 company_id = user.company_id
         
         ticket_manager = get_ticket_manager()
+        # Для інцидентів items можуть бути порожніми
+        items = state.get('items', [])
         ticket_id = ticket_manager.create_ticket(
             ticket_type=state['ticket_type'],
             company_id=company_id,
             user_id=user_id,
-            items=state['items'],
+            items=items,
             comment=state.get('comment')
         )
         
@@ -642,7 +759,12 @@ async def create_ticket_from_state(update: Update, context: ContextTypes.DEFAULT
             
             del ticket_creation_state[user_id]
             
-            type_name = "Заправка картриджів" if state['ticket_type'] == "REFILL" else "Ремонт принтера"
+            type_name_map = {
+                "REFILL": "Заправка картриджів",
+                "REPAIR": "Ремонт принтера",
+                "INCIDENT": "Інцидент"
+            }
+            type_name = type_name_map.get(state['ticket_type'], state['ticket_type'])
             message_text = (
                 f"✅ <b>Заявка створена!</b>\n\n"
                 f"Номер заявки: <b>#{ticket_id}</b>\n"

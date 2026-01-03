@@ -11,6 +11,53 @@
     </div>
 </div>
 
+{% if current_user.is_admin and cartridge_stats %}
+<!-- Звіт по картриджам -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-pie-chart"></i> Звіт по картриджам</h5>
+                <form method="GET" action="{{ url_for('dashboard') }}" class="d-flex gap-2">
+                    <input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm" style="width: auto;">
+                    <span class="align-self-center">-</span>
+                    <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm" style="width: auto;">
+                    <button type="submit" class="btn btn-sm btn-primary">
+                        <i class="bi bi-search"></i> Застосувати
+                    </button>
+                </form>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    {% for company_id, company_data in cartridge_stats.items() %}
+                    <div class="col-md-6 col-lg-4 mb-4">
+                        <div class="card h-100">
+                            <div class="card-header">
+                                <h6 class="mb-0">{{ company_data.company_name }}</h6>
+                                <small class="text-muted">
+                                    Всього картриджів: 
+                                    <strong>
+                                        {% set total_cartridges = 0 %}
+                                        {% for user_id, user_data in company_data.users.items() %}
+                                            {% set total_cartridges = total_cartridges + user_data.cartridge_count %}
+                                        {% endfor %}
+                                        {{ total_cartridges }}
+                                    </strong>
+                                </small>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="chart-{{ company_id }}" style="max-height: 300px;"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <div class="row">
     <div class="col-12">
         <div class="card">
@@ -35,13 +82,30 @@
                         </thead>
                         <tbody>
                             {% for ticket in tickets %}
-                            <tr>
+                            <tr {% if ticket.status == 'CLOSED' or ticket.status == 'CANCELLED' %}class="ticket-closed"{% endif %}>
                                 <td>#{{ ticket.id }}</td>
                                 <td>{{ ticket.ticket_type | ticket_type_ua }}</td>
-                                <td><span class="badge {{ ticket.status | status_badge_color(ticket.ticket_type) }}">{{ ticket.status | status_ua }}</span></td>
-                                <td><span class="badge {{ ticket.priority | priority_badge_color }}">{{ ticket.priority | priority_ua }}</span></td>
+                                <td>
+                                    {% if ticket.status == 'CLOSED' or ticket.status == 'CANCELLED' %}
+                                    <span class="badge bg-secondary text-muted">{{ ticket.status | status_ua }}</span>
+                                    {% else %}
+                                    <span class="badge {{ ticket.status | status_badge_color(ticket.ticket_type) }}">{{ ticket.status | status_ua }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if ticket.status == 'CLOSED' or ticket.status == 'CANCELLED' %}
+                                    <span class="badge bg-secondary text-muted">{{ ticket.priority | priority_ua }}</span>
+                                    {% else %}
+                                    <span class="badge {{ ticket.priority | priority_badge_color }}">{{ ticket.priority | priority_ua }}</span>
+                                    {% endif %}
+                                </td>
                                 <td>{{ ticket.company_name or 'Невідомо' }}</td>
-                                <td>{{ ticket.user_name or 'Невідомо' }}</td>
+                                <td>
+                                    {{ ticket.user_name or 'Невідомо' }}
+                                    {% if ticket.user_is_vip %}
+                                    <span class="badge bg-warning text-dark ms-1" title="VIP користувач - заявки з високим пріоритетом">⭐ VIP</span>
+                                    {% endif %}
+                                </td>
                                 <td>{{ ticket.created_at[:10] if ticket.created_at else 'Невідомо' }}</td>
                                 <td>
                                     <a href="{{ url_for('ticket_detail', ticket_id=ticket.id) }}" class="btn btn-sm btn-primary">
@@ -60,5 +124,116 @@
         </div>
     </div>
 </div>
+
+<style>
+.ticket-closed {
+    opacity: 0.5;
+    color: #6c757d !important;
+}
+
+.ticket-closed td {
+    text-decoration: line-through;
+    color: #6c757d !important;
+}
+
+.ticket-closed .badge {
+    background-color: #6c757d !important;
+    color: #ffffff !important;
+}
+
+.ticket-closed .btn {
+    opacity: 0.6;
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Генерація кольорів для діаграм
+function generateColors(count) {
+    const colors = [
+        'rgba(13, 110, 253, 0.8)',   // primary
+        'rgba(25, 135, 84, 0.8)',    // success
+        'rgba(255, 193, 7, 0.8)',    // warning
+        'rgba(220, 53, 69, 0.8)',    // danger
+        'rgba(13, 202, 240, 0.8)',   // info
+        'rgba(108, 117, 125, 0.8)',  // secondary
+        'rgba(111, 66, 193, 0.8)',   // purple
+        'rgba(253, 126, 20, 0.8)',   // orange
+        'rgba(32, 201, 151, 0.8)',   // teal
+        'rgba(214, 51, 132, 0.8)'     // pink
+    ];
+    
+    const result = [];
+    for (let i = 0; i < count; i++) {
+        result.push(colors[i % colors.length]);
+    }
+    return result;
+}
+
+// Ініціалізація діаграм
+document.addEventListener('DOMContentLoaded', function() {
+    const statsData = {{ cartridge_stats | tojson if cartridge_stats else '{}' }};
+    
+    for (const [companyId, companyData] of Object.entries(statsData)) {
+        const canvas = document.getElementById('chart-' + companyId);
+        if (!canvas) continue;
+        
+        const users = companyData.users;
+        const labels = [];
+        const data = [];
+        
+        // Сортуємо користувачів за кількістю картриджів (від більшого до меншого)
+        const sortedUsers = Object.entries(users).sort((a, b) => b[1].cartridge_count - a[1].cartridge_count);
+        
+        for (const [userId, userData] of sortedUsers) {
+            labels.push(userData.user_name);
+            data.push(userData.cartridge_count);
+        }
+        
+        const colors = generateColors(labels.length);
+        
+        new Chart(canvas, {
+            type: 'pie',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: data,
+                    backgroundColor: colors,
+                    borderColor: colors.map(c => c.replace('0.8', '1')),
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            padding: 15,
+                            usePointStyle: true,
+                            font: {
+                                size: 11
+                            }
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label || '';
+                                const value = context.parsed || 0;
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = ((value / total) * 100).toFixed(1);
+                                return label + ': ' + value + ' (' + percentage + '%)';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+});
+</script>
 {% endblock %}
 

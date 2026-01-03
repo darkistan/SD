@@ -427,15 +427,42 @@ class PDFReportManager:
         
         # Таблиця принтерів
         if printers_list:
-            data = [['Модель принтера', 'Опис проблеми']]
+            # Стиль для тексту в комірках
+            cell_style = ParagraphStyle(
+                'CellStyle',
+                parent=styles['Normal'],
+                fontName=self._ukrainian_font,
+                fontSize=10,
+                leading=12,
+                leftIndent=0,
+                rightIndent=0,
+                wordWrap='CJK'  # Автоматичний перенос слів
+            )
+            
+            # Стиль для заголовків
+            header_style = ParagraphStyle(
+                'HeaderStyle',
+                parent=styles['Normal'],
+                fontName=self._ukrainian_font_bold,
+                fontSize=11,
+                textColor=colors.white,
+                alignment=1  # По центру
+            )
+            
+            data = [[Paragraph('Модель принтера', header_style), Paragraph('Опис проблеми', header_style)]]
             
             for printer_info in printers_list:
+                model_text = printer_info['model'] or 'Не вказано'
+                comment_text = printer_info['comment'] or 'Не вказано'
+                
+                # Використовуємо Paragraph для автоматичного переносу тексту
                 data.append([
-                    printer_info['model'],
-                    printer_info['comment'] or 'Не вказано'
+                    Paragraph(model_text, cell_style),
+                    Paragraph(comment_text, cell_style)
                 ])
             
-            table = Table(data, colWidths=[80*mm, 100*mm])
+            # Збільшуємо ширину колонки "Опис проблеми" та зменшуємо "Модель принтера"
+            table = Table(data, colWidths=[60*mm, 120*mm])
             table.setStyle(TableStyle([
                 # Заголовок таблиці - синій колір як на сайті
                 ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0d6efd')),  # Bootstrap primary
@@ -443,7 +470,7 @@ class PDFReportManager:
                 ('ALIGN', (0, 0), (-1, 0), 'CENTER'),  # Заголовки по центру
                 ('ALIGN', (0, 1), (0, -1), 'CENTER'),  # Модель принтера по центру
                 ('ALIGN', (1, 1), (1, -1), 'LEFT'),  # Опис проблеми по лівому краю
-                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),  # Вирівнювання по верху для багаторядкового тексту
                 ('FONTNAME', (0, 0), (-1, 0), self._ukrainian_font_bold),
                 ('FONTSIZE', (0, 0), (-1, 0), 11),
                 ('FONTNAME', (0, 1), (-1, -1), self._ukrainian_font),
@@ -452,6 +479,8 @@ class PDFReportManager:
                 ('TOPPADDING', (0, 0), (-1, 0), 10),
                 ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
                 ('TOPPADDING', (0, 1), (-1, -1), 8),
+                ('LEFTPADDING', (0, 0), (-1, -1), 6),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 6),
                 # Тіло таблиці - світлий сірий фон
                 ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#f8f9fa')),  # Bootstrap light
                 # Сітчаста рамка

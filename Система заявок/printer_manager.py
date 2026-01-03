@@ -221,7 +221,7 @@ class PrinterManager:
         
         return stats
     
-    def update_printer(self, printer_id: int, model: str, description: Optional[str] = None) -> bool:
+    def update_printer(self, printer_id: int, model: str, description: Optional[str] = None, is_active: bool = True) -> bool:
         """
         Оновлення принтера
         
@@ -229,6 +229,7 @@ class PrinterManager:
             printer_id: ID принтера
             model: Нова модель принтера
             description: Новий опис (опціонально)
+            is_active: Статус активності принтера
         
         Returns:
             True якщо оновлено успішно
@@ -251,9 +252,11 @@ class PrinterManager:
                 
                 printer.model = model
                 printer.description = description
+                printer.is_active = is_active
                 session.commit()
                 
-                logger.log_info(f"Оновлено принтер ID {printer_id}: {model}")
+                status_text = "активний" if is_active else "неактивний"
+                logger.log_info(f"Оновлено принтер ID {printer_id}: {model} (статус: {status_text})")
                 return True
         except Exception as e:
             logger.log_error(f"Помилка оновлення принтера: {e}")

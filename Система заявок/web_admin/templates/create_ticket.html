@@ -46,12 +46,13 @@
                             <option value="">-- Виберіть тип --</option>
                             <option value="REFILL">Заправка картриджів</option>
                             <option value="REPAIR">Ремонт принтера</option>
+                            <option value="INCIDENT">Інцидент</option>
                         </select>
                     </div>
                     
-                    <div class="mb-3">
+                    <div class="mb-3" id="printerSection">
                         <label class="form-label">Принтер <span class="text-danger">*</span></label>
-                        <select name="printer_id" id="printerSelect" class="form-select" required>
+                        <select name="printer_id" id="printerSelect" class="form-select">
                             <option value="">-- Виберіть принтер --</option>
                             {% for printer in printers %}
                             <option value="{{ printer.id }}">{{ printer.model }}</option>
@@ -86,6 +87,31 @@
 
 {% block scripts %}
 <script>
+// Обробка зміни типу заявки
+document.getElementById('ticketType').addEventListener('change', function() {
+    const ticketType = this.value;
+    const printerSection = document.getElementById('printerSection');
+    const printerSelect = document.getElementById('printerSelect');
+    const cartridgesSection = document.getElementById('cartridgesSection');
+    
+    if (ticketType === 'INCIDENT') {
+        // Для інцидентів принтер не обов'язковий
+        printerSection.style.display = 'none';
+        printerSelect.removeAttribute('required');
+        cartridgesSection.style.display = 'none';
+    } else {
+        // Для інших типів принтер обов'язковий
+        printerSection.style.display = 'block';
+        printerSelect.setAttribute('required', 'required');
+        if (ticketType === 'REFILL' && printerSelect.value) {
+            // Якщо принтер вже вибрано, завантажуємо картриджі
+            printerSelect.dispatchEvent(new Event('change'));
+        } else {
+            cartridgesSection.style.display = 'none';
+        }
+    }
+});
+
 document.getElementById('printerSelect').addEventListener('change', function() {
     const printerId = this.value;
     const ticketType = document.getElementById('ticketType').value;

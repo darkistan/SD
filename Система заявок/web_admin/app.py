@@ -19,10 +19,9 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from database import init_database, get_session
-from models import User, Company, Ticket, TicketItem, ActiveSession, Log, PendingRequest, Printer, CartridgeType, PrinterCartridgeCompatibility, Contractor, ReplacementFund, TicketStatus, Poll, PollOption, PollResponse, Announcement, AnnouncementRecipient
+from models import User, Company, Ticket, TicketItem, ActiveSession, Log, PendingRequest, Printer, CartridgeType, PrinterCartridgeCompatibility, Contractor, TicketStatus, Poll, PollOption, PollResponse, Announcement, AnnouncementRecipient
 from ticket_manager import get_ticket_manager
 from printer_manager import get_printer_manager
-from replacement_fund_manager import get_replacement_fund_manager
 from pdf_report_manager import get_pdf_report_manager
 from status_manager import get_status_manager
 from poll_manager import get_poll_manager
@@ -77,7 +76,8 @@ def ticket_type_ua_filter(ticket_type):
     """Переклад типу заявки на українську мову"""
     type_translations = {
         'REFILL': 'Заправка картриджів',
-        'REPAIR': 'Ремонт принтера'
+        'REPAIR': 'Ремонт принтера',
+        'INCIDENT': 'Інцидент'
     }
     return type_translations.get(ticket_type, ticket_type)
 
@@ -118,6 +118,7 @@ def item_type_ua_filter(item_type):
 def status_badge_color_filter(status, ticket_type=None):
     """Визначення кольору badge для статусу заявки в залежності від типу"""
     # Кольори для заявок на заправку (REFILL) - сині відтінки
+    # Кольори для інцидентів (INCIDENT) - фіолетові відтінки
     refill_colors = {
         'NEW': 'bg-primary',           # Синій
         'ACCEPTED': 'bg-info',         # Світло-синій
@@ -158,6 +159,15 @@ def status_badge_color_filter(status, ticket_type=None):
         return refill_colors.get(status, 'bg-info')
     elif ticket_type == 'REPAIR':
         return repair_colors.get(status, 'bg-warning')
+    elif ticket_type == 'INCIDENT':
+        # Для інцидентів використовуємо блакитні/фіолетові відтінки
+        incident_colors = {
+            'NEW': 'bg-info',
+            'ACCEPTED': 'bg-info',
+            'CLOSED': 'bg-secondary',
+            'CANCELLED': 'bg-secondary'
+        }
+        return incident_colors.get(status, 'bg-info')
     else:
         # За замовчуванням для невідомого типу
         return 'bg-info'
@@ -290,14 +300,46 @@ def dashboard():
     """Головна сторінка"""
     ticket_manager = get_ticket_manager()
     
+    # Отримуємо параметри періоду
+    date_from_str = request.args.get('date_from', '').strip()
+    date_to_str = request.args.get('date_to', '').strip()
+    
+    # Встановлюємо дати за замовчуванням (поточний місяць)
+    today = datetime.now()
+    if not date_from_str:
+        date_from = datetime(today.year, today.month, 1)
+    else:
+        try:
+            date_from = datetime.strptime(date_from_str, '%Y-%m-%d')
+        except ValueError:
+            date_from = datetime(today.year, today.month, 1)
+    
+    if not date_to_str:
+        date_to = datetime.now()
+    else:
+        try:
+            date_to = datetime.strptime(date_to_str, '%Y-%m-%d')
+            # Додаємо кінець дня
+            date_to = date_to.replace(hour=23, minute=59, second=59)
+        except ValueError:
+            date_to = datetime.now()
+    
     if current_user.is_admin:
         # Для адміна - всі заявки
         tickets = ticket_manager.get_all_tickets(limit=10)
+        
+        # Отримуємо статистику по картриджам
+        cartridge_stats = ticket_manager.get_cartridge_statistics_by_company(date_from, date_to)
     else:
         # Для користувача - тільки свої
         tickets = ticket_manager.get_user_tickets(current_user.user_id, limit=10)
+        cartridge_stats = {}
     
-    return render_template('dashboard.html', tickets=tickets)
+    return render_template('dashboard.html', 
+                         tickets=tickets,
+                         cartridge_stats=cartridge_stats,
+                         date_from=date_from.strftime('%Y-%m-%d'),
+                         date_to=date_to.strftime('%Y-%m-%d'))
 
 
 @app.route('/tickets')
@@ -312,6 +354,8 @@ def tickets():
     date_from_str = request.args.get('date_from', '').strip()
     date_to_str = request.args.get('date_to', '').strip()
     period = request.args.get('period', '').strip()
+    sort_by = request.args.get('sort_by', 'created_at')
+    sort_order = request.args.get('sort_order', 'desc')
     
     # Обробка періодів
     date_from = None
@@ -363,6 +407,8 @@ def tickets():
             ticket_type=ticket_type,
             date_from=date_from,
             date_to=date_to,
+            sort_by=sort_by,
+            sort_order=sort_order,
             limit=1000
         )
     else:
@@ -372,6 +418,8 @@ def tickets():
             ticket_type=ticket_type,
             date_from=date_from,
             date_to=date_to,
+            sort_by=sort_by,
+            sort_order=sort_order,
             limit=1000
         )
     
@@ -397,7 +445,9 @@ def tickets():
                          selected_ticket_type=ticket_type,
                          selected_period=period,
                          selected_date_from=date_from_str,
-                         selected_date_to=date_to_str)
+                         selected_date_to=date_to_str,
+                         sort_by=sort_by,
+                         sort_order=sort_order)
 
 
 @app.route('/ticket/<int:ticket_id>')
@@ -463,12 +513,31 @@ def ticket_detail(ticket_id):
                     # Отримуємо всі сумісні картриджі
                     compatible_cartridges = printer_manager.get_compatible_cartridges(printer_id)
     
+    # Отримуємо список користувачів для випадаючого списку (тільки для адміна)
+    users = []
+    companies = []
+    if current_user.is_admin:
+        with get_session() as session:
+            users_list = session.query(User).filter(User.role == 'user').order_by(User.full_name).all()
+            users = [
+                {'user_id': u.user_id, 'full_name': u.full_name, 'username': u.username}
+                for u in users_list
+            ]
+            
+            # Отримуємо список компаній для випадаючого списку
+            companies_list = session.query(Company).order_by(Company.name).all()
+            companies = [
+                {'id': c.id, 'name': c.name}
+                for c in companies_list
+            ]
+    
     return render_template('ticket_detail.html', 
                          ticket=ticket, 
                          logs=logs, 
                          all_statuses=all_statuses,
                          printer_info=printer_info,
-                         compatible_cartridges=compatible_cartridges)
+                         compatible_cartridges=compatible_cartridges,
+                         users=users)
 
 
 @app.route('/ticket/<int:ticket_id>/change_status', methods=['POST'])
@@ -528,6 +597,66 @@ def change_ticket_priority(ticket_id):
     except Exception as e:
         logger.log_error(f"Помилка зміни пріоритету заявки {ticket_id}: {e}")
         flash('Помилка зміни пріоритету.', 'danger')
+    
+    return redirect(url_for('ticket_detail', ticket_id=ticket_id))
+
+
+@app.route('/ticket/<int:ticket_id>/change_author', methods=['POST'])
+@admin_required
+def change_ticket_author(ticket_id):
+    """Зміна автора заявки"""
+    new_user_id = request.form.get('user_id', type=int)
+    
+    if not new_user_id:
+        flash('Користувача не вибрано.', 'danger')
+        return redirect(url_for('ticket_detail', ticket_id=ticket_id))
+    
+    ticket_manager = get_ticket_manager()
+    
+    try:
+        success = ticket_manager.change_author(
+            ticket_id=ticket_id,
+            new_user_id=new_user_id,
+            admin_id=current_user.user_id
+        )
+        
+        if success:
+            flash('Автора заявки змінено.', 'success')
+        else:
+            flash('Помилка зміни автора.', 'danger')
+    except Exception as e:
+        logger.log_error(f"Помилка зміни автора заявки {ticket_id}: {e}")
+        flash('Помилка зміни автора.', 'danger')
+    
+    return redirect(url_for('ticket_detail', ticket_id=ticket_id))
+
+
+@app.route('/ticket/<int:ticket_id>/change_company', methods=['POST'])
+@admin_required
+def change_ticket_company(ticket_id):
+    """Зміна компанії заявки"""
+    company_id = request.form.get('company_id', type=int)
+    
+    if not company_id:
+        flash('Виберіть компанію.', 'danger')
+        return redirect(url_for('ticket_detail', ticket_id=ticket_id))
+    
+    ticket_manager = get_ticket_manager()
+    
+    try:
+        success = ticket_manager.change_company(
+            ticket_id=ticket_id,
+            new_company_id=company_id,
+            admin_id=current_user.user_id
+        )
+        
+        if success:
+            flash('Компанію заявки змінено.', 'success')
+        else:
+            flash('Помилка зміни компанії.', 'danger')
+    except Exception as e:
+        logger.log_error(f"Помилка зміни компанії заявки {ticket_id}: {e}")
+        flash('Помилка зміни компанії.', 'danger')
     
     return redirect(url_for('ticket_detail', ticket_id=ticket_id))
 
@@ -773,6 +902,23 @@ def toggle_user_notifications(user_id):
     return redirect(url_for('users'))
 
 
+@app.route('/users/toggle_vip/<int:user_id>', methods=['POST'])
+@admin_required
+def toggle_user_vip(user_id):
+    """Перемикання VIP статусу користувача"""
+    with get_session() as session:
+        user = session.query(User).filter(User.user_id == user_id).first()
+        if user:
+            user.is_vip = not user.is_vip
+            session.commit()
+            status = "надано" if user.is_vip else "знято"
+            flash(f'VIP статус для користувача {status}.', 'success')
+        else:
+            flash('Користувача не знайдено.', 'danger')
+    
+    return redirect(url_for('users'))
+
+
 @app.route('/users/update_full_name/<int:user_id>', methods=['POST'])
 @admin_required
 def update_user_full_name(user_id):
@@ -883,7 +1029,7 @@ def delete_user():
                     return redirect(url_for('users'))
             
             # Перевіряємо залежності
-            from models import Ticket, ReplacementFundMovement, AnnouncementRecipient, PendingRequest
+            from models import Ticket, AnnouncementRecipient, PendingRequest
             
             # Заявки, де користувач є автором
             tickets_count = session.query(Ticket).filter(Ticket.user_id == user_id).count()
@@ -891,16 +1037,13 @@ def delete_user():
             # Заявки, де користувач є адміністратором-творцем
             admin_tickets_count = session.query(Ticket).filter(Ticket.admin_creator_id == user_id).count()
             
-            # Рухи підменного фонду
-            fund_movements_count = session.query(ReplacementFundMovement).filter(ReplacementFundMovement.user_id == user_id).count()
-            
             # Отримувачі оголошень
             announcements_count = session.query(AnnouncementRecipient).filter(AnnouncementRecipient.recipient_user_id == user_id).count()
             
             # Запити на доступ
             pending_requests_count = session.query(PendingRequest).filter(PendingRequest.user_id == user_id).count()
             
-            total_usage = tickets_count + admin_tickets_count + fund_movements_count + announcements_count
+            total_usage = tickets_count + admin_tickets_count + announcements_count
             
             if total_usage > 0:
                 usage_details = []
@@ -908,8 +1051,6 @@ def delete_user():
                     usage_details.append(f"{tickets_count} заявок")
                 if admin_tickets_count > 0:
                     usage_details.append(f"{admin_tickets_count} заявок (створені адміном)")
-                if fund_movements_count > 0:
-                    usage_details.append(f"{fund_movements_count} рухів підменного фонду")
                 if announcements_count > 0:
                     usage_details.append(f"{announcements_count} оголошень")
                 
@@ -1019,16 +1160,14 @@ def delete_company(company_id):
                 return redirect(url_for('companies'))
             
             # Перевіряємо чи використовується компанія
-            from models import User, Ticket, ReplacementFund
+            from models import User, Ticket
             
             users_count = session.query(User).filter(User.company_id == company_id).count()
             tickets_count = session.query(Ticket).filter(Ticket.company_id == company_id).count()
-            replacement_fund_count = session.query(ReplacementFund).filter(ReplacementFund.company_id == company_id).count()
-            
-            total_usage = users_count + tickets_count + replacement_fund_count
+            total_usage = users_count + tickets_count
             
             if total_usage > 0:
-                flash(f'Неможливо видалити компанію: вона використовується ({users_count} користувачів, {tickets_count} заявок, {replacement_fund_count} записів у фонді).', 'danger')
+                flash(f'Неможливо видалити компанію: вона використовується ({users_count} користувачів, {tickets_count} заявок).', 'danger')
                 return redirect(url_for('companies'))
             
             session.delete(company)
@@ -1111,13 +1250,14 @@ def edit_printer(printer_id):
     """Редагування принтера"""
     model = request.form.get('model', '').strip()
     description = request.form.get('description', '').strip()
+    is_active = request.form.get('is_active') == '1'
     
     if not model:
         flash('Модель принтера не може бути порожньою.', 'danger')
         return redirect(url_for('printers'))
     
     printer_manager = get_printer_manager()
-    if printer_manager.update_printer(printer_id, model, description if description else None):
+    if printer_manager.update_printer(printer_id, model, description if description else None, is_active):
         flash('Принтер оновлено.', 'success')
     else:
         flash('Помилка оновлення принтера (можливо, модель вже існує).', 'danger')
@@ -1342,98 +1482,6 @@ def update_cartridge_service_mode(cartridge_id):
         flash('Помилка оновлення.', 'danger')
     
     return redirect(url_for('cartridges'))
-
-
-@app.route('/replacement_fund')
-@admin_required
-def replacement_fund():
-    """Підменний фонд"""
-    fund_manager = get_replacement_fund_manager()
-    
-    company_id = request.args.get('company_id', type=int)
-    item_type = request.args.get('item_type')
-    show_discrepancies = request.args.get('show_discrepancies') == '1'
-    
-    items = fund_manager.get_fund_items(
-        company_id=company_id,
-        item_type=item_type,
-        show_discrepancies_only=show_discrepancies
-    )
-    
-    with get_session() as session:
-        companies_list = session.query(Company).order_by(Company.name).all()
-        # Конвертуємо в список словників, щоб уникнути DetachedInstanceError
-        companies = [
-            {'id': c.id, 'name': c.name}
-            for c in companies_list
-        ]
-    
-    return render_template('replacement_fund.html', 
-                         items=items, 
-                         companies=companies,
-                         selected_company_id=company_id,
-                         selected_item_type=item_type,
-                         show_discrepancies=show_discrepancies)
-
-
-@app.route('/replacement_fund/operation', methods=['POST'])
-@admin_required
-def replacement_fund_operation():
-    """Виконання операції з підменним фондом"""
-    fund_item_id = request.form.get('fund_item_id', type=int)
-    operation_type = request.form.get('operation_type')
-    quantity = request.form.get('quantity', type=int)
-    comment = request.form.get('comment', '').strip()
-    
-    if not fund_item_id or not operation_type or not quantity:
-        flash('Заповніть всі поля.', 'danger')
-        return redirect(url_for('replacement_fund'))
-    
-    fund_manager = get_replacement_fund_manager()
-    success = fund_manager.perform_operation(
-        fund_item_id=fund_item_id,
-        operation_type=operation_type,
-        quantity=quantity,
-        user_id=current_user.user_id,
-        comment=comment if comment else None
-    )
-    
-    if success:
-        flash('Операцію виконано успішно.', 'success')
-    else:
-        flash('Помилка виконання операції.', 'danger')
-    
-    return redirect(url_for('replacement_fund'))
-
-
-@app.route('/replacement_fund/inventory', methods=['POST'])
-@admin_required
-def replacement_fund_inventory():
-    """Інвентаризація позиції фонду"""
-    fund_item_id = request.form.get('fund_item_id', type=int)
-    actual_quantity = request.form.get('actual_quantity', type=int)
-    comment = request.form.get('comment', '').strip()
-    correct_accounting = request.form.get('correct_accounting') == '1'
-    
-    if not fund_item_id or actual_quantity is None:
-        flash('Заповніть всі поля.', 'danger')
-        return redirect(url_for('replacement_fund'))
-    
-    fund_manager = get_replacement_fund_manager()
-    success = fund_manager.perform_inventory(
-        fund_item_id=fund_item_id,
-        actual_quantity=actual_quantity,
-        user_id=current_user.user_id,
-        comment=comment if comment else None,
-        correct_accounting=correct_accounting
-    )
-    
-    if success:
-        flash('Інвентаризацію виконано успішно.', 'success')
-    else:
-        flash('Помилка інвентаризації.', 'danger')
-    
-    return redirect(url_for('replacement_fund'))
 
 
 @app.route('/api/compatible_cartridges/<int:printer_id>')
@@ -1680,12 +1728,20 @@ def edit_status(status_id):
 def delete_status(status_id):
     """Видалення статусу"""
     status_manager = get_status_manager()
+    
+    # Перевіряємо, чи це захищений статус
+    with get_session() as session:
+        status = session.query(TicketStatus).filter(TicketStatus.id == status_id).first()
+        if status and status.code in ['NEW', 'CLOSED', 'CANCELLED']:
+            flash('Цей статус захищений від видалення.', 'warning')
+            return redirect(url_for('statuses'))
+    
     success = status_manager.delete_status(status_id)
     
     if success:
         flash('Статус видалено.', 'success')
     else:
-        flash('Помилка видалення статусу (можливо, використовується в заявках).', 'danger')
+        flash('Помилка видалення статусу (можливо, використовується в заявках або захищений).', 'danger')
     
     return redirect(url_for('statuses'))
 
@@ -1725,8 +1781,13 @@ def create_ticket():
         user_id = request.form.get('user_id', type=int)
         comment = request.form.get('comment', '').strip()
         
-        if not ticket_type or not printer_id:
-            flash('Заповніть всі обов\'язкові поля.', 'danger')
+        # Для інцидентів принтер не обов'язковий
+        if not ticket_type:
+            flash('Виберіть тип заявки.', 'danger')
+            return redirect(url_for('create_ticket'))
+        
+        if ticket_type != 'INCIDENT' and not printer_id:
+            flash('Виберіть принтер.', 'danger')
             return redirect(url_for('create_ticket'))
         
         # Для адміна можна створити заявку для будь-якого користувача
@@ -1747,8 +1808,15 @@ def create_ticket():
         
         # Формуємо позиції заявки
         items = []
-        if ticket_type == 'REFILL':
+        if ticket_type == 'INCIDENT':
+            # Для інцидентів позиції не обов'язкові
+            pass
+        elif ticket_type == 'REFILL':
             # Для заправки - отримуємо картриджі
+            if not printer_id:
+                flash('Виберіть принтер для заявки на заправку.', 'danger')
+                return redirect(url_for('create_ticket'))
+            
             cartridge_ids = request.form.getlist('cartridge_ids[]')
             quantities = request.form.getlist('quantities[]')
             
@@ -1767,13 +1835,18 @@ def create_ticket():
                     continue
         else:
             # Для ремонту - принтер
+            if not printer_id:
+                flash('Виберіть принтер для заявки на ремонт.', 'danger')
+                return redirect(url_for('create_ticket'))
+            
             items.append({
                 'item_type': 'PRINTER',
                 'printer_model_id': printer_id,
                 'quantity': 1
             })
         
-        if not items:
+        # Для інцидентів items можуть бути порожніми, для інших типів - обов'язкові
+        if ticket_type != 'INCIDENT' and not items:
             flash('Додайте хоча б одну позицію до заявки.', 'danger')
             return redirect(url_for('create_ticket'))
         
@@ -2103,8 +2176,17 @@ def poll_detail(poll_id):
                 'username': user.username or f"user_{user.user_id}",
                 'full_name': user.full_name
             })
+        
+        # Отримуємо список компаній для вибору
+        companies_list = session.query(Company).order_by(Company.name).all()
+        companies = []
+        for company in companies_list:
+            companies.append({
+                'id': company.id,
+                'name': company.name
+            })
     
-    return render_template('poll_detail.html', poll=poll_data, results=results, users=users)
+    return render_template('poll_detail.html', poll=poll_data, results=results, users=users, companies=companies)
 
 
 @app.route('/polls/<int:poll_id>/send', methods=['POST'])
@@ -2125,14 +2207,23 @@ def send_poll(poll_id):
             return redirect(url_for('poll_detail', poll_id=poll_id))
         
         # Отримуємо список отримувачів
-        send_to_all = request.form.get('send_to_all') == 'on'
+        recipient_type = request.form.get('recipient_type', 'users')
+        user_ids = []
         
-        if send_to_all:
-            # Відправляємо всім користувачам з Telegram
-            users = session.query(User).filter(User.user_id > 0).all()
+        if recipient_type == 'companies':
+            # По компаніях
+            company_ids = [int(cid) for cid in request.form.getlist('company_ids')]
+            if not company_ids:
+                flash('Виберіть хоча б одну компанію!', 'warning')
+                return redirect(url_for('poll_detail', poll_id=poll_id))
+            
+            users = session.query(User).filter(
+                User.company_id.in_(company_ids),
+                User.user_id > 0  # Тільки Telegram користувачі
+            ).all()
             user_ids = [user.user_id for user in users]
         else:
-            # Отримуємо вибраних користувачів
+            # Окремі користувачі
             user_ids = [int(rid) for rid in request.form.getlist('recipient_ids')]
         
         if not user_ids:
@@ -2235,10 +2326,20 @@ def announcements():
                     'username': user.username or f"user_{user.user_id}",
                     'full_name': user.full_name
                 })
+            
+            # Отримуємо список компаній для вибору
+            companies_list = session.query(Company).order_by(Company.name).all()
+            companies = []
+            for company in companies_list:
+                companies.append({
+                    'id': company.id,
+                    'name': company.name
+                })
         
         return render_template('announcements.html',
                              announcements=announcement_history,
-                             users=users)
+                             users=users,
+                             companies=companies)
     except Exception as e:
         logger.log_error(f"Помилка завантаження оголошень: {e}")
         flash(f'Помилка завантаження оголошень: {e}', 'danger')
@@ -2256,18 +2357,24 @@ def create_announcement():
         priority = request.form.get('priority', 'normal')
         
         # Отримуємо список отримувачів
-        send_to_all = request.form.get('send_to_all') == 'on'
+        recipient_type = request.form.get('recipient_type', 'users')
+        recipient_ids = []
         
-        if send_to_all:
-            # Отримуємо всіх користувачів з увімкненими оповіщеннями
+        if recipient_type == 'companies':
+            # По компаніях
+            company_ids = [int(cid) for cid in request.form.getlist('company_ids')]
+            if not company_ids:
+                flash('Виберіть хоча б одну компанію!', 'warning')
+                return redirect(url_for('announcements'))
+            
             with get_session() as session:
                 users = session.query(User).filter(
-                    User.notifications_enabled == True,
+                    User.company_id.in_(company_ids),
                     User.user_id > 0  # Тільки Telegram користувачі
                 ).all()
                 recipient_ids = [user.user_id for user in users]
         else:
-            # Отримуємо вибраних користувачів
+            # Окремі користувачі
             recipient_ids = [int(rid) for rid in request.form.getlist('recipient_ids')]
         
         if not recipient_ids:

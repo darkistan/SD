@@ -117,11 +117,11 @@ class NotificationManager:
         Args:
             user_id: ID користувача-виконавця
             ticket_id: ID заявки
-            ticket_type: Тип заявки (REFILL / REPAIR)
+            ticket_type: Тип заявки (REFILL / REPAIR / INCIDENT)
             company_name: Назва компанії
             user_name: Ім'я користувача-ініціатора
             priority: Пріоритет заявки (LOW / NORMAL / HIGH)
-            items: Список позицій заявки
+            items: Список позицій заявки (може бути порожнім для інцидентів)
             comment: Коментар користувача (опціонально)
         
         Returns:
@@ -131,7 +131,12 @@ class NotificationManager:
             return False
         
         # Назви типів заявок
-        type_name = "🖨️ Заправка картриджів" if ticket_type == "REFILL" else "🔧 Ремонт принтера"
+        type_names = {
+            "REFILL": "🖨️ Заправка картриджів",
+            "REPAIR": "🔧 Ремонт принтера",
+            "INCIDENT": "⚠️ Інцидент"
+        }
+        type_name = type_names.get(ticket_type, ticket_type)
         
         # Назви пріоритетів
         priority_names = {
@@ -150,20 +155,21 @@ class NotificationManager:
             f"<b>Від:</b> {user_name}\n\n"
         )
         
-        # Додаємо позиції заявки
-        message += "<b>Позиції:</b>\n"
-        for idx, item in enumerate(items, 1):
-            if item.get('item_type') == 'CARTRIDGE':
-                cartridge_name = item.get('cartridge_name', 'Невідомо')
-                quantity = item.get('quantity', 1)
-                printer_name = item.get('printer_name', '')
-                if printer_name:
-                    message += f"{idx}. {cartridge_name} (для {printer_name}) - {quantity} шт.\n"
-                else:
-                    message += f"{idx}. {cartridge_name} - {quantity} шт.\n"
-            elif item.get('item_type') == 'PRINTER':
-                printer_name = item.get('printer_name', 'Невідомо')
-                message += f"{idx}. Принтер: {printer_name}\n"
+        # Додаємо позиції заявки (тільки якщо є позиції)
+        if items:
+            message += "<b>Позиції:</b>\n"
+            for idx, item in enumerate(items, 1):
+                if item.get('item_type') == 'CARTRIDGE':
+                    cartridge_name = item.get('cartridge_name', 'Невідомо')
+                    quantity = item.get('quantity', 1)
+                    printer_name = item.get('printer_name', '')
+                    if printer_name:
+                        message += f"{idx}. {cartridge_name} (для {printer_name}) - {quantity} шт.\n"
+                    else:
+                        message += f"{idx}. {cartridge_name} - {quantity} шт.\n"
+                elif item.get('item_type') == 'PRINTER':
+                    printer_name = item.get('printer_name', 'Невідомо')
+                    message += f"{idx}. Принтер: {printer_name}\n"
         
         # Додаємо коментар, якщо є
         if comment:

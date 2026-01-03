@@ -95,6 +95,7 @@ class DatabaseManager:
             
             # Виконуємо міграції
             self.migrate_add_company_id_to_user()
+            self.migrate_add_is_vip_to_user()
             self.migrate_create_ticket_statuses()
             
             # Створюємо адміністратора за замовчуванням, якщо його немає
@@ -176,6 +177,23 @@ class DatabaseManager:
                     logger.log_info("Додано колонку company_id до users")
         except Exception as e:
             logger.log_error(f"Помилка міграції додавання company_id: {e}")
+    
+    def migrate_add_is_vip_to_user(self):
+        """Міграція: додавання колонки is_vip до таблиці users"""
+        try:
+            with self.engine.begin() as conn:
+                inspector = inspect(self.engine)
+                
+                if 'users' not in inspector.get_table_names():
+                    return
+                
+                columns = [col['name'] for col in inspector.get_columns('users')]
+                
+                if 'is_vip' not in columns:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN is_vip BOOLEAN DEFAULT 0"))
+                    logger.log_info("Додано колонку is_vip до users")
+        except Exception as e:
+            logger.log_error(f"Помилка міграції додавання is_vip: {e}")
     
     def migrate_create_ticket_statuses(self):
         """Міграція: створення та заповнення справочника статусів"""

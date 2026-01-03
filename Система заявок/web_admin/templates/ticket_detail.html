@@ -47,11 +47,41 @@
                     </tr>
                     <tr>
                         <th>Компанія:</th>
-                        <td>{{ ticket.company_name or 'Невідомо' }}</td>
+                        <td>
+                            {% if current_user.is_admin %}
+                            <form method="POST" action="{{ url_for('change_ticket_company', ticket_id=ticket['id']) }}" class="d-inline">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                <select name="company_id" class="form-select form-select-sm d-inline-block" style="width: auto;" onchange="this.form.submit()">
+                                    {% for company in companies %}
+                                    <option value="{{ company.id }}" {% if ticket.company_id == company.id %}selected{% endif %}>
+                                        {{ company.name }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </form>
+                            {% else %}
+                            {{ ticket.company_name or 'Невідомо' }}
+                            {% endif %}
+                        </td>
                     </tr>
                     <tr>
                         <th>Користувач:</th>
-                        <td>{{ ticket.user_name or 'Невідомо' }}</td>
+                        <td>
+                            {% if current_user.is_admin %}
+                            <form method="POST" action="{{ url_for('change_ticket_author', ticket_id=ticket['id']) }}" class="d-inline">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                <select name="user_id" class="form-select form-select-sm d-inline-block" style="width: auto;" onchange="this.form.submit()">
+                                    {% for user in users %}
+                                    <option value="{{ user.user_id }}" {% if ticket.user_id == user.user_id %}selected{% endif %}>
+                                        {{ user.full_name or user.username or user.user_id }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </form>
+                            {% else %}
+                            {{ ticket.user_name or 'Невідомо' }}
+                            {% endif %}
+                        </td>
                     </tr>
                     <tr>
                         <th>Дата створення:</th>

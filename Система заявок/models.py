@@ -15,11 +15,12 @@ class Company(Base):
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(200), unique=True, nullable=False, index=True)
+    printer_service_enabled = Column(Boolean, default=True, nullable=False, index=True)  # Чи увімкнено обслуговування принтерів
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     
     def __repr__(self):
-        return f"<Company(id={self.id}, name='{self.name}')>"
+        return f"<Company(id={self.id}, name='{self.name}', printer_service_enabled={self.printer_service_enabled})>"
 
 
 class PendingRequest(Base):

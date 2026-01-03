@@ -48,6 +48,7 @@
                             <tr>
                                 <th>ID</th>
                                 <th>Назва</th>
+                                <th>Обслуговування принтерів</th>
                                 <th>Дата створення</th>
                                 <th>Дії</th>
                             </tr>
@@ -57,6 +58,13 @@
                             <tr>
                                 <td>{{ company.id }}</td>
                                 <td><strong>{{ company.name }}</strong></td>
+                                <td>
+                                    {% if company.printer_service_enabled %}
+                                    <span class="badge bg-success">Увімкнено</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">Вимкнено</span>
+                                    {% endif %}
+                                </td>
                                 <td>{{ company.created_at.strftime('%d.%m.%Y') if company.created_at else 'Невідомо' }}</td>
                                 <td>
                                     <div class="btn-group" role="group">
@@ -99,6 +107,15 @@
                     <div class="mb-3">
                         <label class="form-label">Назва компанії</label>
                         <input type="text" name="name" class="form-control" value="{{ company.name }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" name="printer_service_enabled" id="printerService{{ company.id }}" {% if company.printer_service_enabled %}checked{% endif %}>
+                            <label class="form-check-label" for="printerService{{ company.id }}">
+                                Обслуговування принтерів увімкнено
+                            </label>
+                        </div>
+                        <small class="text-muted">Якщо вимкнено, користувачі цієї компанії не зможуть створювати заявки на заправку картриджів та ремонт принтерів</small>
                     </div>
                 </div>
                 <div class="modal-footer">

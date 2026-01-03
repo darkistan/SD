@@ -31,10 +31,10 @@
                     
                     <div class="mb-3">
                         <label class="form-label">Компанія <span class="text-danger">*</span></label>
-                        <select name="company_id" class="form-select" required>
+                        <select name="company_id" id="companySelect" class="form-select" required>
                             <option value="">-- Виберіть компанію --</option>
                             {% for company in companies %}
-                            <option value="{{ company.id }}">{{ company.name }}</option>
+                            <option value="{{ company.id }}" data-printer-service="{{ '1' if company.printer_service_enabled else '0' }}">{{ company.name }}</option>
                             {% endfor %}
                         </select>
                     </div>
@@ -44,10 +44,15 @@
                         <label class="form-label">Тип заявки <span class="text-danger">*</span></label>
                         <select name="ticket_type" id="ticketType" class="form-select" required>
                             <option value="">-- Виберіть тип --</option>
+                            {% if printer_service_enabled %}
                             <option value="REFILL">Заправка картриджів</option>
                             <option value="REPAIR">Ремонт принтера</option>
+                            {% endif %}
                             <option value="INCIDENT">Інцидент</option>
                         </select>
+                        {% if not printer_service_enabled %}
+                        <small class="text-muted">Обслуговування принтерів вимкнено для вашої компанії. Доступна тільки заявка типу "Інцидент".</small>
+                        {% endif %}
                     </div>
                     
                     <div class="mb-3" id="printerSection">
@@ -87,6 +92,47 @@
 
 {% block scripts %}
 <script>
+// Оновлення доступних типів заявок при виборі компанії (для адмінів)
+{% if is_admin %}
+document.getElementById('companySelect')?.addEventListener('change', function() {
+    const selectedOption = this.options[this.selectedIndex];
+    const printerServiceEnabled = selectedOption.dataset.printerService === '1';
+    const ticketTypeSelect = document.getElementById('ticketType');
+    
+    // Очищаємо вибір типу заявки, якщо вибрано тип, який тепер недоступний
+    if (ticketTypeSelect.value === 'REFILL' || ticketTypeSelect.value === 'REPAIR') {
+        if (!printerServiceEnabled) {
+            ticketTypeSelect.value = '';
+        }
+    }
+    
+    // Оновлюємо опції
+    const options = ticketTypeSelect.querySelectorAll('option');
+    options.forEach(option => {
+        if (option.value === 'REFILL' || option.value === 'REPAIR') {
+            if (printerServiceEnabled) {
+                option.style.display = '';
+            } else {
+                option.style.display = 'none';
+            }
+        }
+    });
+    
+    // Оновлюємо повідомлення
+    let messageElement = ticketTypeSelect.parentElement.querySelector('small.text-muted');
+    if (!printerServiceEnabled) {
+        if (!messageElement) {
+            messageElement = document.createElement('small');
+            messageElement.className = 'text-muted';
+            ticketTypeSelect.parentElement.appendChild(messageElement);
+        }
+        messageElement.textContent = 'Обслуговування принтерів вимкнено для вибраної компанії. Доступна тільки заявка типу "Інцидент".';
+    } else if (messageElement) {
+        messageElement.remove();
+    }
+});
+{% endif %}
+
 // Обробка зміни типу заявки
 document.getElementById('ticketType').addEventListener('change', function() {
     const ticketType = this.value;

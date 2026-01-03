@@ -97,6 +97,7 @@ class DatabaseManager:
             self.migrate_add_company_id_to_user()
             self.migrate_add_is_vip_to_user()
             self.migrate_create_ticket_statuses()
+            self.migrate_add_printer_service_enabled_to_company()
             
             # Створюємо адміністратора за замовчуванням, якщо його немає
             self.create_default_admin()
@@ -238,6 +239,23 @@ class DatabaseManager:
                 logger.log_info(f"Створено {len(default_statuses)} статусів заявок")
         except Exception as e:
             logger.log_error(f"Помилка міграції створення статусів: {e}")
+    
+    def migrate_add_printer_service_enabled_to_company(self):
+        """Міграція: додавання колонки printer_service_enabled до таблиці companies"""
+        try:
+            with self.engine.begin() as conn:
+                inspector = inspect(self.engine)
+                
+                if 'companies' not in inspector.get_table_names():
+                    return
+                
+                columns = [col['name'] for col in inspector.get_columns('companies')]
+                
+                if 'printer_service_enabled' not in columns:
+                    conn.execute(text("ALTER TABLE companies ADD COLUMN printer_service_enabled BOOLEAN DEFAULT 1"))
+                    logger.log_info("Додано колонку printer_service_enabled до companies")
+        except Exception as e:
+            logger.log_error(f"Помилка міграції додавання printer_service_enabled: {e}")
     
     @contextmanager
     def get_session(self, max_retries: int = 3) -> Generator[Session, None, None]:

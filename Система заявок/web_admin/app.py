@@ -537,7 +537,8 @@ def ticket_detail(ticket_id):
                          all_statuses=all_statuses,
                          printer_info=printer_info,
                          compatible_cartridges=compatible_cartridges,
-                         users=users)
+                         users=users,
+                         companies=companies)
 
 
 @app.route('/ticket/<int:ticket_id>/change_status', methods=['POST'])
@@ -863,14 +864,20 @@ def set_user_password(user_id):
     return redirect(url_for('users'))
 
 
-@app.route('/users/update_company/<int:user_id>', methods=['POST'])
+@app.route('/users/update_company/<user_id>', methods=['POST'])
 @admin_required
 def update_user_company(user_id):
     """Оновлення компанії користувача"""
+    try:
+        user_id_int = int(user_id)
+    except (ValueError, TypeError):
+        flash('Невірний ID користувача.', 'danger')
+        return redirect(url_for('users'))
+    
     company_id = request.form.get('company_id', type=int)
     
     with get_session() as session:
-        user = session.query(User).filter(User.user_id == user_id).first()
+        user = session.query(User).filter(User.user_id == user_id_int).first()
         if user:
             user.company_id = company_id
             session.commit()
@@ -1117,6 +1124,7 @@ def add_company():
 def edit_company(company_id):
     """Редагування компанії"""
     name = request.form.get('name', '').strip()
+    printer_service_enabled = request.form.get('printer_service_enabled') == 'on'
     
     if not name:
         flash('Назва компанії не може бути порожньою.', 'danger')
@@ -1139,6 +1147,7 @@ def edit_company(company_id):
                 return redirect(url_for('companies'))
             
             company.name = name
+            company.printer_service_enabled = printer_service_enabled
             session.commit()
             flash('Компанію оновлено.', 'success')
     except Exception as e:
@@ -1806,6 +1815,14 @@ def create_ticket():
             flash('Ваша компанія не встановлена. Зверніться до адміністратора.', 'danger')
             return redirect(url_for('create_ticket'))
         
+        # Перевіряємо, чи дозволено обслуговування принтерів для компанії
+        if ticket_type in ['REFILL', 'REPAIR']:
+            with get_session() as session:
+                company = session.query(Company).filter(Company.id == company_id).first()
+                if company and not company.printer_service_enabled:
+                    flash('Обслуговування принтерів вимкнено для цієї компанії. Можна створити тільки заявку типу "Інцидент".', 'danger')
+                    return redirect(url_for('create_ticket'))
+        
         # Формуємо позиції заявки
         items = []
         if ticket_type == 'INCIDENT':
@@ -1870,13 +1887,15 @@ def create_ticket():
     printer_manager = get_printer_manager()
     printers = printer_manager.get_all_printers(active_only=True)
     
+    # Визначаємо, чи дозволено обслуговування принтерів
+    printer_service_enabled = True
     with get_session() as session:
         if current_user.is_admin:
             companies_list = session.query(Company).order_by(Company.name).all()
             users_list = session.query(User).filter(User.role == 'user').order_by(User.full_name).all()
             # Конвертуємо в списки словників, щоб уникнути DetachedInstanceError
             companies = [
-                {'id': c.id, 'name': c.name}
+                {'id': c.id, 'name': c.name, 'printer_service_enabled': c.printer_service_enabled}
                 for c in companies_list
             ]
             users = [
@@ -1886,12 +1905,18 @@ def create_ticket():
         else:
             companies = []
             users = []
+            # Для користувача перевіряємо його компанію
+            user = session.query(User).filter(User.user_id == current_user.user_id).first()
+            if user and user.company_id:
+                company = session.query(Company).filter(Company.id == user.company_id).first()
+                printer_service_enabled = company.printer_service_enabled if company else True
     
     return render_template('create_ticket.html', 
                          printers=printers, 
                          companies=companies,
                          users=users,
-                         is_admin=current_user.is_admin)
+                         is_admin=current_user.is_admin,
+                         printer_service_enabled=printer_service_enabled)
 
 
 @app.route('/reports/generate_pdf', methods=['POST'])

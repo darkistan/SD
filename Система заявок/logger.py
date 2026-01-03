@@ -131,6 +131,12 @@ class BotLogger:
         self.logger.warning(message)
         self._save_to_db('SECURITY', message, user_id, 'csrf_attack')
     
+    def log_csrf_expired_token(self, user_id: int, callback_data: str) -> None:
+        """Логування застарілого CSRF токену"""
+        message = f"Невірний CSRF токен для користувача {user_id} | Callback: {callback_data[:50]}..."
+        self.logger.error(message)
+        self._save_to_db('SECURITY', message, user_id, 'csrf_expired_token')
+    
     def log_info(self, message: str, user_id: Optional[int] = None) -> None:
         """Логування інформаційних повідомлень"""
         self.logger.info(message)

@@ -137,6 +137,7 @@ async def new_ticket_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     # Отримуємо компанію користувача
     company_id = None
     company_name = None
+    printer_service_enabled = True
     with get_session() as session:
         user = session.query(User).filter(User.user_id == user_id).first()
         if not user or not user.company_id:
@@ -151,6 +152,7 @@ async def new_ticket_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         company_id = user.company_id
         company = session.query(Company).filter(Company.id == company_id).first()
         company_name = company.name if company else f"Компанія #{company_id}"
+        printer_service_enabled = company.printer_service_enabled if company else True
     
     # Починаємо процес створення заявки
     ticket_creation_state[user_id] = {
@@ -162,12 +164,15 @@ async def new_ticket_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         'company_id': company_id
     }
     
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🖨️ Заправка картриджів", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "ticket_type:REFILL"))],
-        [InlineKeyboardButton("🔧 Ремонт принтера", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "ticket_type:REPAIR"))],
-        [InlineKeyboardButton("⚠️ Інцидент", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "ticket_type:INCIDENT"))],
-        [InlineKeyboardButton("❌ Скасувати", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cancel_ticket"))]
-    ])
+    # Формуємо клавіатуру в залежності від налаштувань компанії
+    keyboard_buttons = []
+    if printer_service_enabled:
+        keyboard_buttons.append([InlineKeyboardButton("🖨️ Заправка картриджів", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "ticket_type:REFILL"))])
+        keyboard_buttons.append([InlineKeyboardButton("🔧 Ремонт принтера", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "ticket_type:REPAIR"))])
+    keyboard_buttons.append([InlineKeyboardButton("⚠️ Інцидент", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "ticket_type:INCIDENT"))])
+    keyboard_buttons.append([InlineKeyboardButton("❌ Скасувати", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cancel_ticket"))])
+    
+    keyboard = InlineKeyboardMarkup(keyboard_buttons)
     
     message_text = (
         f"📝 <b>Створення нової заявки</b>\n\n"
@@ -418,6 +423,19 @@ async def handle_ticket_type_selection(update: Update, context: ContextTypes.DEF
     if user_id not in ticket_creation_state:
         await update.callback_query.edit_message_text("❌ Помилка. Почніть спочатку.")
         return
+    
+    # Перевіряємо, чи дозволено обслуговування принтерів для компанії
+    if ticket_type in ['REFILL', 'REPAIR']:
+        with get_session() as session:
+            user = session.query(User).filter(User.user_id == user_id).first()
+            if user and user.company_id:
+                company = session.query(Company).filter(Company.id == user.company_id).first()
+                if company and not company.printer_service_enabled:
+                    await update.callback_query.edit_message_text(
+                        "❌ Обслуговування принтерів вимкнено для вашої компанії.\n\n"
+                        "Ви можете створити тільки заявку типу \"Інцидент\"."
+                    )
+                    return
     
     ticket_creation_state[user_id]['ticket_type'] = ticket_type
     

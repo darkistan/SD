@@ -93,12 +93,16 @@ class DatabaseManager:
             elif not existing_tables:
                 logger.log_info("Таблиці БД успішно створені")
             
-            # Виконуємо міграції
+            # Виконуємо міграції для додавання полів до існуючих таблиць
+            # Для нових БД всі поля вже створені через Base.metadata.create_all()
+            # Міграції мають перевірки на наявність колонок, тому безпечні
             self.migrate_add_company_id_to_user()
             self.migrate_add_is_vip_to_user()
-            self.migrate_add_color_to_ticket_status()  # Спочатку додаємо поле color
-            self.migrate_create_ticket_statuses()  # Потім створюємо/перевіряємо статуси
+            self.migrate_add_color_to_ticket_status()
             self.migrate_add_printer_service_enabled_to_company()
+            
+            # Заповнюємо справочник статусів (якщо таблиця порожня)
+            self.migrate_create_ticket_statuses()
             
             # Створюємо адміністратора за замовчуванням, якщо його немає
             self.create_default_admin()

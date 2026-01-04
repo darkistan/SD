@@ -125,15 +125,33 @@ class InputValidator:
         
         status = status.strip().upper()
         
-        valid_statuses = [
-            'DRAFT', 'NEW', 'ACCEPTED', 'COLLECTING', 'SENT_TO_CONTRACTOR',
-            'WAITING_CONTRACTOR', 'RECEIVED_FROM_CONTRACTOR', 'QC_CHECK',
-            'READY', 'DELIVERED_INSTALLED', 'CLOSED',
-            'NEED_INFO', 'REJECTED_UNSUPPORTED', 'CANCELLED', 'REWORK'
-        ]
+        # Отримуємо список дозволених статусів з бази даних
+        try:
+            from status_manager import get_status_manager
+            status_manager = get_status_manager()
+            all_statuses = status_manager.get_all_statuses(active_only=True)
+            valid_statuses = [s['code'] for s in all_statuses]
+            
+            # Якщо не вдалося отримати статуси з БД, використовуємо fallback список
+            if not valid_statuses:
+                valid_statuses = [
+                    'DRAFT', 'NEW', 'ACCEPTED', 'COLLECTING', 'SENT_TO_CONTRACTOR',
+                    'WAITING_CONTRACTOR', 'RECEIVED_FROM_CONTRACTOR', 'QC_CHECK',
+                    'READY', 'DELIVERED_INSTALLED', 'CLOSED',
+                    'NEED_INFO', 'REJECTED_UNSUPPORTED', 'CANCELLED', 'REWORK'
+                ]
+        except Exception as e:
+            logger.log_error(f"Помилка отримання статусів з БД: {e}")
+            # Fallback до хардкодженого списку у разі помилки
+            valid_statuses = [
+                'DRAFT', 'NEW', 'ACCEPTED', 'COLLECTING', 'SENT_TO_CONTRACTOR',
+                'WAITING_CONTRACTOR', 'RECEIVED_FROM_CONTRACTOR', 'QC_CHECK',
+                'READY', 'DELIVERED_INSTALLED', 'CLOSED',
+                'NEED_INFO', 'REJECTED_UNSUPPORTED', 'CANCELLED', 'REWORK'
+            ]
         
         if status not in valid_statuses:
-            logger.log_error(f"Невірний статус: {status}")
+            logger.log_error(f"Невірний статус: {status}. Доступні: {', '.join(valid_statuses)}")
             return {
                 "valid": False,
                 "message": f"Невірний статус. Доступні: {', '.join(valid_statuses)}"

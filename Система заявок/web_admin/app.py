@@ -45,6 +45,20 @@ app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key-change-
 # CSRF захист
 csrf = CSRFProtect(app)
 
+# Налаштування для Cloudflare (ProxyFix для правильної обробки X-Forwarded-For)
+# Це дозволяє Flask правильно визначати IP клієнтів через Cloudflare
+if FLASK_ENV == 'production':
+    # ProxyFix обробляє заголовки X-Forwarded-For, X-Forwarded-Proto від Cloudflare
+    # ВАЖЛИВО: ProxyFix має бути застосований ПЕРШИМ, перед іншими middleware
+    app.wsgi_app = ProxyFix(
+        app.wsgi_app,
+        x_for=1,      # Кількість проксі перед сервером (Cloudflare = 1)
+        x_proto=1,    # Обробка X-Forwarded-Proto (HTTP/HTTPS)
+        x_host=1,     # Обробка X-Forwarded-Host
+        x_port=1      # Обробка X-Forwarded-Port
+    )
+
+
 # Ініціалізація Flask-Login
 login_manager = LoginManager()
 login_manager.init_app(app)

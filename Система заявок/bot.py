@@ -232,7 +232,8 @@ async def my_tickets_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 )
         
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("➕ Створити нову заявку", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "new_ticket"))]
+            [InlineKeyboardButton("➕ Створити нову заявку", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "new_ticket"))],
+            [InlineKeyboardButton("⬅️ Повернутись назад", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "back_to_menu"))]
         ])
         
         # Підтримка як команди, так і callback
@@ -397,6 +398,10 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             "Всі зміни статусів заявок надсилаються автоматично."
         )
         await query.edit_message_text(help_text, parse_mode='HTML')
+    elif callback_data == "back_to_menu":
+        keyboard = create_menu_keyboard(user_id)
+        message_text = "📋 <b>Головне меню</b>\n\nОберіть дію:"
+        await query.edit_message_text(message_text, reply_markup=keyboard, parse_mode='HTML')
     elif callback_data.startswith("ticket_type:"):
         ticket_type = callback_data.split(":")[1]
         await handle_ticket_type_selection(update, context, user_id, ticket_type)

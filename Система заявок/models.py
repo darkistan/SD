@@ -16,6 +16,7 @@ class Company(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(200), unique=True, nullable=False, index=True)
     printer_service_enabled = Column(Boolean, default=True, nullable=False, index=True)  # Чи увімкнено обслуговування принтерів
+    user_info = Column(Text, nullable=True)  # Інформація для користувача (відображається в Telegram боті)
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     

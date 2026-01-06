@@ -100,6 +100,7 @@ class DatabaseManager:
             self.migrate_add_is_vip_to_user()
             self.migrate_add_color_to_ticket_status()
             self.migrate_add_printer_service_enabled_to_company()
+            self.migrate_add_user_info_to_company()
             
             # Заповнюємо справочник статусів (якщо таблиця порожня)
             self.migrate_create_ticket_statuses()
@@ -295,6 +296,20 @@ class DatabaseManager:
             # Якщо таблиця вже існує - це нормально, не логуємо
         except Exception as e:
             logger.log_error(f"Помилка міграції створення ticket_chats: {e}")
+    
+    def migrate_add_user_info_to_company(self):
+        """Міграція: додавання поля user_info до таблиці companies"""
+        try:
+            with self.engine.begin() as conn:
+                inspector = inspect(self.engine)
+                if 'companies' in inspector.get_table_names():
+                    columns = [col['name'] for col in inspector.get_columns('companies')]
+                    
+                    if 'user_info' not in columns:
+                        conn.execute(text("ALTER TABLE companies ADD COLUMN user_info TEXT"))
+                        logger.log_info("Додано колонку user_info до companies")
+        except Exception as e:
+            logger.log_error(f"Помилка міграції додавання user_info: {e}")
     
     @contextmanager
     def get_session(self, max_retries: int = 3) -> Generator[Session, None, None]:

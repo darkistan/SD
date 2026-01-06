@@ -125,7 +125,17 @@ async def menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         del chat_active_for_user[user_id]
     
     if auth_manager.is_user_allowed(user_id):
-        message_text = "📋 <b>Головне меню</b>\n\nОберіть дію:"
+        message_text = "📋 <b>Головне меню</b>\n\n"
+        
+        # Отримуємо інформацію компанії користувача
+        with get_session() as session:
+            user = session.query(User).filter(User.user_id == user_id).first()
+            if user and user.company_id:
+                company = session.query(Company).filter(Company.id == user.company_id).first()
+                if company and company.user_info:
+                    message_text += f"{company.user_info}\n\n"
+        
+        message_text += "Оберіть дію:"
     else:
         message_text = "🔐 <b>Доступ до системи</b>\n\nЗапросите доступ для використання системи."
     
@@ -296,7 +306,6 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                     
                     # Оновлюємо повідомлення, щоб показати, що голос зараховано
                     try:
-                        from database import get_session
                         from models import Poll, PollOption, PollResponse
                         
                         with get_session() as session:
@@ -417,7 +426,17 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         keyboard = create_menu_keyboard(user_id)
         
         if auth_manager.is_user_allowed(user_id):
-            message_text = "📋 <b>Головне меню</b>\n\nОберіть дію:"
+            message_text = "📋 <b>Головне меню</b>\n\n"
+            
+            # Отримуємо інформацію компанії користувача
+            with get_session() as session:
+                user = session.query(User).filter(User.user_id == user_id).first()
+                if user and user.company_id:
+                    company = session.query(Company).filter(Company.id == user.company_id).first()
+                    if company and company.user_info:
+                        message_text += f"{company.user_info}\n\n"
+            
+            message_text += "Оберіть дію:"
         else:
             message_text = "🔐 <b>Доступ до системи</b>\n\nЗапросите доступ для використання системи."
         

@@ -1339,6 +1339,7 @@ def add_company():
         return redirect(url_for('companies'))
     
     try:
+        user_info = request.form.get('user_info', '').strip()
         with get_session() as session:
             # Перевіряємо чи не існує вже така компанія
             existing = session.query(Company).filter(Company.name == name).first()
@@ -1346,7 +1347,7 @@ def add_company():
                 flash('Компанія з такою назвою вже існує.', 'warning')
                 return redirect(url_for('companies'))
             
-            company = Company(name=name)
+            company = Company(name=name, user_info=user_info if user_info else None)
             session.add(company)
             session.commit()
             flash('Компанію додано.', 'success')
@@ -1363,6 +1364,7 @@ def edit_company(company_id):
     """Редагування компанії"""
     name = request.form.get('name', '').strip()
     printer_service_enabled = request.form.get('printer_service_enabled') == 'on'
+    user_info = request.form.get('user_info', '').strip()
     
     if not name:
         flash('Назва компанії не може бути порожньою.', 'danger')
@@ -1386,6 +1388,7 @@ def edit_company(company_id):
             
             company.name = name
             company.printer_service_enabled = printer_service_enabled
+            company.user_info = user_info if user_info else None
             session.commit()
             flash('Компанію оновлено.', 'success')
     except Exception as e:

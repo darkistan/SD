@@ -18,16 +18,18 @@
             <div class="card-body">
                 <form method="POST" action="{{ url_for('add_company') }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                    <div class="row">
-                        <div class="col-md-8">
-                            <input type="text" name="name" class="form-control" placeholder="Назва компанії" required>
-                        </div>
-                        <div class="col-md-4">
-                            <button type="submit" class="btn btn-primary w-100">
-                                <i class="bi bi-plus"></i> Додати
-                            </button>
-                        </div>
+                    <div class="mb-3">
+                        <label class="form-label">Назва компанії</label>
+                        <input type="text" name="name" class="form-control" placeholder="Назва компанії" required>
                     </div>
+                    <div class="mb-3">
+                        <label class="form-label">Інформація для користувача</label>
+                        <textarea name="user_info" class="form-control" rows="3" placeholder="Ця інформація буде відображатися користувачам цієї компанії в Telegram боті після 'Головне меню'"></textarea>
+                        <small class="text-muted">Підтримується HTML розмітка</small>
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-plus"></i> Додати
+                    </button>
                 </form>
             </div>
         </div>
@@ -107,6 +109,11 @@
                     <div class="mb-3">
                         <label class="form-label">Назва компанії</label>
                         <input type="text" name="name" class="form-control" value="{{ company.name }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Інформація для користувача</label>
+                        <textarea name="user_info" class="form-control" rows="3" placeholder="Ця інформація буде відображатися користувачам цієї компанії в Telegram боті після 'Головне меню'">{{ company.user_info or '' }}</textarea>
+                        <small class="text-muted">Підтримується HTML розмітка</small>
                     </div>
                     <div class="mb-3">
                         <div class="form-check form-switch">

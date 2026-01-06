@@ -322,7 +322,9 @@ class PDFReportManager:
             # Підсумок
             data.append(['ВСЬОГО', '', '', str(total_cartridges)])
             
-            table = Table(data, colWidths=[50*mm, 50*mm, 60*mm, 30*mm])
+            # Ширини колонок: Компанія, Модель принтера, Картридж, Кількість
+            # Збільшуємо ширину "Модель принтера" для довгих назв
+            table = Table(data, colWidths=[45*mm, 75*mm, 55*mm, 25*mm])
             table.setStyle(TableStyle([
                 # Заголовок таблиці - синій колір як на сайті
                 ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0d6efd')),  # Bootstrap primary

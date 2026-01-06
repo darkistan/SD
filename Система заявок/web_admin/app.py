@@ -70,7 +70,7 @@ login_manager.login_message = 'Будь ласка, увійдіть для до
 limiter = Limiter(
     app=app,
     key_func=get_remote_address,
-    default_limits=["200 per hour"],
+    default_limits=["500 per day", "200 per hour"],
     storage_uri="memory://"
 )
 

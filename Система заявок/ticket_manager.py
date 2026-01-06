@@ -437,7 +437,11 @@ class TicketManager:
                     query = query.filter(Ticket.status == status)
                 
                 if ticket_type:
-                    query = query.filter(Ticket.ticket_type == ticket_type)
+                    if ticket_type == 'NOT_INCIDENT':
+                        # Виключаємо тип INCIDENT
+                        query = query.filter(Ticket.ticket_type != 'INCIDENT')
+                    else:
+                        query = query.filter(Ticket.ticket_type == ticket_type)
                 
                 if date_from:
                     query = query.filter(Ticket.created_at >= date_from)
@@ -512,7 +516,11 @@ class TicketManager:
                     query = query.filter(Ticket.status == status)
                 
                 if ticket_type:
-                    query = query.filter(Ticket.ticket_type == ticket_type)
+                    if ticket_type == 'NOT_INCIDENT':
+                        # Виключаємо тип INCIDENT
+                        query = query.filter(Ticket.ticket_type != 'INCIDENT')
+                    else:
+                        query = query.filter(Ticket.ticket_type == ticket_type)
                 
                 if priority:
                     query = query.filter(Ticket.priority == priority)

@@ -485,10 +485,16 @@ def tickets():
         else:
             ticket['chat_is_active'] = False
     
+    # Отримуємо список кандидатів на виконавців (тільки для адміністраторів)
+    executor_candidates = []
+    if current_user.is_admin:
+        executor_candidates = ticket_manager.get_executor_candidates()
+    
     return render_template('tickets.html', 
                          tickets=tickets, 
                          companies=companies, 
                          all_statuses=all_statuses,
+                         executor_candidates=executor_candidates,
                          is_admin=current_user.is_admin,
                          selected_company_id=company_id,
                          selected_status=status,
@@ -745,6 +751,51 @@ def get_chat_unread_api(ticket_id):
     chat_manager = get_chat_manager()
     unread_count = chat_manager.get_unread_count(ticket_id, 'admin')
     return jsonify({'unread_count': unread_count})
+
+
+@app.route('/ticket/<int:ticket_id>/assign_executor', methods=['POST'])
+@admin_required
+def assign_executor(ticket_id):
+    """Призначення виконавця заявки"""
+    executor_id = request.form.get('executor_id', type=int)
+    
+    if not executor_id:
+        flash('Виконавець не вибрано.', 'danger')
+        return redirect(url_for('tickets'))
+    
+    ticket_manager = get_ticket_manager()
+    admin_id = current_user.user_id
+    
+    if ticket_manager.assign_executor(ticket_id, executor_id, admin_id):
+        flash('Виконавець призначено.', 'success')
+    else:
+        flash('Помилка призначення виконавця.', 'danger')
+    
+    return redirect(url_for('tickets'))
+
+
+@app.route('/ticket/<int:ticket_id>/remove_executor', methods=['POST'])
+@admin_required
+def remove_executor(ticket_id):
+    """Зняття виконавця з заявки"""
+    ticket_manager = get_ticket_manager()
+    admin_id = current_user.user_id
+    
+    if ticket_manager.remove_executor(ticket_id, admin_id):
+        flash('Виконавець знято.', 'success')
+    else:
+        flash('Помилка зняття виконавця.', 'danger')
+    
+    return redirect(url_for('tickets'))
+
+
+@app.route('/api/executor_candidates')
+@admin_required
+def get_executor_candidates():
+    """API для отримання списку кандидатів на виконавців"""
+    ticket_manager = get_ticket_manager()
+    candidates = ticket_manager.get_executor_candidates()
+    return jsonify({'candidates': candidates})
 
 
 @app.route('/ticket/<int:ticket_id>/change_status', methods=['POST'])

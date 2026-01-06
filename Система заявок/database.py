@@ -101,6 +101,7 @@ class DatabaseManager:
             self.migrate_add_color_to_ticket_status()
             self.migrate_add_printer_service_enabled_to_company()
             self.migrate_add_user_info_to_company()
+            self.migrate_add_executor_to_ticket()
             
             # Заповнюємо справочник статусів (якщо таблиця порожня)
             self.migrate_create_ticket_statuses()
@@ -310,6 +311,22 @@ class DatabaseManager:
                         logger.log_info("Додано колонку user_info до companies")
         except Exception as e:
             logger.log_error(f"Помилка міграції додавання user_info: {e}")
+    
+    def migrate_add_executor_to_ticket(self):
+        """Міграція: додавання поля executor_id до таблиці tickets"""
+        try:
+            with self.engine.begin() as conn:
+                inspector = inspect(self.engine)
+                if 'tickets' in inspector.get_table_names():
+                    columns = [col['name'] for col in inspector.get_columns('tickets')]
+                    
+                    if 'executor_id' not in columns:
+                        conn.execute(text("ALTER TABLE tickets ADD COLUMN executor_id INTEGER"))
+                        # Додаємо індекс для executor_id
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_tickets_executor_id ON tickets(executor_id)"))
+                        logger.log_info("Додано колонку executor_id до tickets")
+        except Exception as e:
+            logger.log_error(f"Помилка міграції додавання executor_id: {e}")
     
     @contextmanager
     def get_session(self, max_retries: int = 3) -> Generator[Session, None, None]:

@@ -133,6 +133,7 @@ class Ticket(Base):
     company_id = Column(Integer, ForeignKey('companies.id'), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False, index=True)
     admin_creator_id = Column(Integer, ForeignKey('users.user_id'), nullable=True, index=True)
+    executor_id = Column(Integer, ForeignKey('users.user_id'), nullable=True, index=True)
     comment = Column(Text, nullable=True)
     admin_comment = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.now, index=True)
@@ -142,6 +143,7 @@ class Ticket(Base):
     company = relationship('Company', backref='tickets')
     user = relationship('User', foreign_keys=[user_id], backref='tickets')
     admin_creator = relationship('User', foreign_keys=[admin_creator_id])
+    executor = relationship('User', foreign_keys=[executor_id])
     items = relationship('TicketItem', backref='ticket', cascade='all, delete-orphan')
     chat_messages = relationship('TicketChat', back_populates='ticket', cascade='all, delete-orphan')
     

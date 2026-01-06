@@ -35,9 +35,14 @@
                         </thead>
                         <tbody>
                             {% for ticket in tickets %}
-                            <tr {% if ticket.status == 'CLOSED' or ticket.status == 'CANCELLED' %}class="ticket-closed"{% elif ticket.chat_is_active %}class="table-info"{% endif %}>
+                            <tr {% if ticket.status == 'CLOSED' or ticket.status == 'CANCELLED' %}class="ticket-closed"{% elif ticket.chat_is_active %}class="table-info"{% elif ticket.executor_id %}class="table-warning"{% endif %}>
                                 <td>
                                     #{{ ticket.id }}
+                                    {% if ticket.executor_id %}
+                                    <span class="badge bg-warning text-dark ms-1" title="Заявка в роботі у виконавця: {{ ticket.executor_name }}">
+                                        <i class="bi bi-person-check-fill"></i> В роботі
+                                    </span>
+                                    {% endif %}
                                     {% if ticket.chat_is_active %}
                                     <a href="{{ url_for('ticket_chat', ticket_id=ticket.id) }}" class="text-decoration-none ms-2" title="Активний чат - натисніть для відкриття">
                                         <span class="badge bg-info text-dark">

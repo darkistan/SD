@@ -564,6 +564,11 @@ class TicketManager:
         """Конвертація заявки в словник"""
         user = session.query(User).filter(User.user_id == ticket.user_id).first()
         company = session.query(Company).filter(Company.id == ticket.company_id).first()
+        executor = None
+        executor_name = None
+        if ticket.executor_id:
+            executor = session.query(User).filter(User.user_id == ticket.executor_id).first()
+            executor_name = executor.full_name or executor.username if executor else None
         
         return {
             'id': ticket.id,
@@ -576,6 +581,8 @@ class TicketManager:
             'user_name': user.full_name or user.username if user else None,
             'user_is_vip': user.is_vip if user else False,
             'admin_creator_id': ticket.admin_creator_id,
+            'executor_id': ticket.executor_id,
+            'executor_name': executor_name,
             'comment': ticket.comment,
             'admin_comment': ticket.admin_comment,
             'created_at': ticket.created_at.isoformat() if ticket.created_at else None,
@@ -745,6 +752,115 @@ class TicketManager:
         except Exception as e:
             logger.log_error(f"Помилка отримання статистики по картриджам: {e}")
             return {}
+
+
+    def assign_executor(self, ticket_id: int, executor_id: int, admin_id: int) -> bool:
+        """
+        Призначення виконавця заявки
+        
+        Args:
+            ticket_id: ID заявки
+            executor_id: ID виконавця (користувача з увімкненими оповіщеннями)
+            admin_id: ID адміністратора, який призначає
+        
+        Returns:
+            True якщо виконавець успішно призначено
+        """
+        try:
+            with get_session() as session:
+                ticket = session.query(Ticket).filter(Ticket.id == ticket_id).first()
+                if not ticket:
+                    logger.log_error(f"Заявка {ticket_id} не знайдена")
+                    return False
+                
+                # Перевіряємо, чи виконавець має увімкнені оповіщення
+                executor = session.query(User).filter(
+                    User.user_id == executor_id,
+                    User.notifications_enabled == True
+                ).first()
+                
+                if not executor:
+                    logger.log_error(f"Користувач {executor_id} не знайдено або не має увімкнених оповіщень")
+                    return False
+                
+                old_executor_id = ticket.executor_id
+                ticket.executor_id = executor_id
+                ticket.updated_at = datetime.now()
+                session.commit()
+                
+                executor_name = executor.full_name or executor.username or f"User {executor_id}"
+                logger.log_info(f"Виконавець {executor_name} (ID: {executor_id}) призначено до заявки {ticket_id} адміністратором {admin_id}")
+                if old_executor_id:
+                    logger.log_info(f"Попередній виконавець заявки {ticket_id}: {old_executor_id}")
+                
+                return True
+                
+        except Exception as e:
+            logger.log_error(f"Помилка призначення виконавця для заявки {ticket_id}: {e}")
+            return False
+    
+    def remove_executor(self, ticket_id: int, admin_id: int) -> bool:
+        """
+        Зняття виконавця з заявки
+        
+        Args:
+            ticket_id: ID заявки
+            admin_id: ID адміністратора, який знімає виконавця
+        
+        Returns:
+            True якщо виконавець успішно знято
+        """
+        try:
+            with get_session() as session:
+                ticket = session.query(Ticket).filter(Ticket.id == ticket_id).first()
+                if not ticket:
+                    logger.log_error(f"Заявка {ticket_id} не знайдена")
+                    return False
+                
+                old_executor_id = ticket.executor_id
+                if not old_executor_id:
+                    logger.log_warning(f"Заявка {ticket_id} не має призначеного виконавця")
+                    return False
+                
+                ticket.executor_id = None
+                ticket.updated_at = datetime.now()
+                session.commit()
+                
+                logger.log_info(f"Виконавець (ID: {old_executor_id}) знято з заявки {ticket_id} адміністратором {admin_id}")
+                return True
+                
+        except Exception as e:
+            logger.log_error(f"Помилка зняття виконавця з заявки {ticket_id}: {e}")
+            return False
+    
+    def get_executor_candidates(self) -> List[Dict[str, Any]]:
+        """
+        Отримання списку кандидатів на виконавців заявок
+        
+        Returns:
+            Список користувачів з увімкненими оповіщеннями
+        """
+        try:
+            with get_session() as session:
+                users = session.query(User).filter(
+                    User.notifications_enabled == True,
+                    User.user_id > 0  # Тільки Telegram користувачі
+                ).order_by(User.full_name, User.username).all()
+                
+                candidates = []
+                for user in users:
+                    candidates.append({
+                        'user_id': user.user_id,
+                        'full_name': user.full_name,
+                        'username': user.username,
+                        'display_name': user.full_name or user.username or f"User {user.user_id}"
+                    })
+                
+                return candidates
+                
+        except Exception as e:
+            logger.log_error(f"Помилка отримання кандидатів на виконавців: {e}")
+            return []
 
 
 # Глобальний екземпляр менеджера заявок

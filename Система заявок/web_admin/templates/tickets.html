@@ -151,6 +151,9 @@
                                 </th>
                                 <th>Компанія</th>
                                 <th>Користувач</th>
+                                {% if is_admin %}
+                                <th>Виконавець</th>
+                                {% endif %}
                                 <th>
                                     {% if sort_by == 'created_at' %}
                                         {% set next_order_date = 'asc' if sort_order == 'desc' else 'desc' %}
@@ -169,7 +172,7 @@
                         </thead>
                         <tbody>
                             {% for ticket in tickets %}
-                            <tr {% if ticket.status == 'CLOSED' or ticket.status == 'CANCELLED' %}class="ticket-closed"{% elif ticket.chat_is_active %}class="table-info"{% endif %}>
+                            <tr {% if ticket.status == 'CLOSED' or ticket.status == 'CANCELLED' %}class="ticket-closed"{% elif ticket.chat_is_active %}class="table-info"{% elif ticket.executor_id %}class="table-warning"{% endif %}>
                                 <td>
                                     #{{ ticket.id }}
                                     {% if ticket.chat_is_active %}
@@ -202,6 +205,31 @@
                                     <span class="badge bg-warning text-dark ms-1" title="VIP користувач - заявки з високим пріоритетом">⭐ VIP</span>
                                     {% endif %}
                                 </td>
+                                {% if is_admin %}
+                                <td>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <form method="POST" action="{{ url_for('assign_executor', ticket_id=ticket.id) }}" class="d-inline-flex align-items-center" style="min-width: 200px;">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                            <select name="executor_id" class="form-select form-select-sm" onchange="this.form.submit()">
+                                                <option value="">Не призначено</option>
+                                                {% for candidate in executor_candidates %}
+                                                <option value="{{ candidate.user_id }}" {% if ticket.executor_id == candidate.user_id %}selected{% endif %}>
+                                                    {{ candidate.display_name }}
+                                                </option>
+                                                {% endfor %}
+                                            </select>
+                                        </form>
+                                        {% if ticket.executor_id %}
+                                        <form method="POST" action="{{ url_for('remove_executor', ticket_id=ticket.id) }}" class="d-inline">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                            <button type="submit" class="btn btn-sm btn-outline-danger" title="Очистити виконавця">
+                                                <i class="bi bi-x"></i>
+                                            </button>
+                                        </form>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                                {% endif %}
                                 <td>{{ ticket.created_at[:10] if ticket.created_at else 'Невідомо' }}</td>
                                 <td>
                                     <a href="{{ url_for('ticket_detail', ticket_id=ticket.id) }}" class="btn btn-sm btn-primary">

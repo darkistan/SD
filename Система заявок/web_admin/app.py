@@ -724,6 +724,7 @@ def reopen_chat(ticket_id):
 
 
 @app.route('/api/tickets/<int:ticket_id>/chat/messages')
+@limiter.exempt
 @admin_required
 def get_chat_messages_api(ticket_id):
     """API для отримання повідомлень чату"""
@@ -737,6 +738,7 @@ def get_chat_messages_api(ticket_id):
 
 
 @app.route('/api/tickets/<int:ticket_id>/chat/unread')
+@limiter.exempt
 @admin_required
 def get_chat_unread_api(ticket_id):
     """API для отримання кількості непрочитаних повідомлень"""

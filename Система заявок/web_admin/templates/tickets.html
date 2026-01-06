@@ -51,8 +51,9 @@
                         <label class="form-label">Тип</label>
                         <select name="ticket_type" class="form-select">
                             <option value="">Всі</option>
-                            <option value="REFILL" {% if selected_ticket_type == 'REFILL' %}selected{% endif %}>Заправка</option>
-                            <option value="REPAIR" {% if selected_ticket_type == 'REPAIR' %}selected{% endif %}>Ремонт</option>
+                            <option value="REFILL" {% if selected_ticket_type == 'REFILL' %}selected{% endif %}>Заправка картриджів</option>
+                            <option value="REPAIR" {% if selected_ticket_type == 'REPAIR' %}selected{% endif %}>Ремонт принтера</option>
+                            <option value="INCIDENT" {% if selected_ticket_type == 'INCIDENT' %}selected{% endif %}>Інцидент</option>
                             <option value="NOT_INCIDENT" {% if selected_ticket_type == 'NOT_INCIDENT' %}selected{% endif %}>Без Інцидентів</option>
                         </select>
                     </div>

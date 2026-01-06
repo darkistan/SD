@@ -104,6 +104,10 @@ class DatabaseManager:
             # Заповнюємо справочник статусів (якщо таблиця порожня)
             self.migrate_create_ticket_statuses()
             
+            # Міграція для таблиці ticket_chats (створюється автоматично через Base.metadata.create_all)
+            # Додаємо перевірку для безпеки
+            self.migrate_create_ticket_chat_table()
+            
             # Створюємо адміністратора за замовчуванням, якщо його немає
             self.create_default_admin()
             
@@ -280,6 +284,17 @@ class DatabaseManager:
                     logger.log_info("Додано колонку color до ticket_statuses")
         except Exception as e:
             logger.log_error(f"Помилка міграції додавання color: {e}")
+    
+    def migrate_create_ticket_chat_table(self):
+        """Міграція: створення таблиці ticket_chats (створюється автоматично через Base.metadata.create_all)"""
+        try:
+            inspector = inspect(self.engine)
+            if 'ticket_chats' not in inspector.get_table_names():
+                # Таблиця буде створена через Base.metadata.create_all в init_db
+                logger.log_info("Таблиця ticket_chats буде створена через Base.metadata.create_all")
+            # Якщо таблиця вже існує - це нормально, не логуємо
+        except Exception as e:
+            logger.log_error(f"Помилка міграції створення ticket_chats: {e}")
     
     @contextmanager
     def get_session(self, max_retries: int = 3) -> Generator[Session, None, None]:

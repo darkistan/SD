@@ -143,13 +143,14 @@ class CSRFManager:
         
         return f"{callback_data}|csrf:{token}"
     
-    def extract_callback_data(self, user_id: int, callback_data: str) -> Optional[str]:
+    def extract_callback_data(self, user_id: int, callback_data: str, allow_refresh: bool = False) -> Optional[str]:
         """
         Витягування callback даних з перевіркою CSRF
         
         Args:
             user_id: ID користувача
             callback_data: Callback дані з токеном
+            allow_refresh: Дозволити автоматичне оновлення токена (для активних чатів)
             
         Returns:
             Оригінальні callback дані або None якщо токен невалідний
@@ -160,7 +161,14 @@ class CSRFManager:
         
         data, token_part = callback_data.rsplit("|csrf:", 1)
         
+        # Перевіряємо токен
         if not self.validate_token(user_id, token_part):
+            # Якщо дозволено оновлення (для активних чатів) - оновлюємо токен
+            if allow_refresh:
+                logger.log_info(f"Автоматичне оновлення CSRF токена для користувача {user_id} (активний чат)")
+                self.refresh_token(user_id)
+                # Повертаємо дані без повторної перевірки, оскільки токен вже оновлено
+                return data
             return None
         
         return data

@@ -142,6 +142,7 @@ class Ticket(Base):
     user = relationship('User', foreign_keys=[user_id], backref='tickets')
     admin_creator = relationship('User', foreign_keys=[admin_creator_id])
     items = relationship('TicketItem', backref='ticket', cascade='all, delete-orphan')
+    chat_messages = relationship('TicketChat', back_populates='ticket', cascade='all, delete-orphan')
     
     def __repr__(self):
         return f"<Ticket(id={self.id}, type='{self.ticket_type}', status='{self.status}', company_id={self.company_id})>"
@@ -315,4 +316,24 @@ class PollResponse(Base):
     
     def __repr__(self):
         return f"<PollResponse(poll_id={self.poll_id}, user_id={self.user_id}, option_id={self.option_id})>"
+
+
+class TicketChat(Base):
+    """Модель повідомлень чату в заявці"""
+    __tablename__ = 'ticket_chats'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    ticket_id = Column(Integer, ForeignKey('tickets.id', ondelete='CASCADE'), nullable=False, index=True)
+    sender_type = Column(String(20), nullable=False, index=True)  # 'admin' або 'user'
+    sender_id = Column(Integer, nullable=False, index=True)  # ID адміна або user_id користувача
+    message = Column(Text, nullable=False)
+    is_read = Column(Boolean, default=False, index=True)
+    is_active = Column(Boolean, default=True, index=True)  # Чи активний чат
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    
+    # Relationships
+    ticket = relationship('Ticket', back_populates='chat_messages')
+    
+    def __repr__(self):
+        return f"<TicketChat(id={self.id}, ticket_id={self.ticket_id}, sender_type='{self.sender_type}', sender_id={self.sender_id})>"
 

@@ -19,13 +19,14 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from database import init_database, get_session
-from models import User, Company, Ticket, TicketItem, ActiveSession, Log, PendingRequest, Printer, CartridgeType, PrinterCartridgeCompatibility, Contractor, TicketStatus, Poll, PollOption, PollResponse, Announcement, AnnouncementRecipient
+from models import User, Company, Ticket, TicketItem, ActiveSession, Log, PendingRequest, Printer, CartridgeType, PrinterCartridgeCompatibility, Contractor, TicketStatus, Poll, PollOption, PollResponse, Announcement, AnnouncementRecipient, TicketChat
 from ticket_manager import get_ticket_manager
 from printer_manager import get_printer_manager
 from pdf_report_manager import get_pdf_report_manager
 from status_manager import get_status_manager
 from poll_manager import get_poll_manager
 from announcement_manager import get_announcement_manager
+from chat_manager import get_chat_manager
 from auth import auth_manager
 from logger import logger
 
@@ -126,6 +127,14 @@ def item_type_ua_filter(item_type):
         'PRINTER': 'Принтер'
     }
     return type_translations.get(item_type, item_type)
+
+
+@app.template_filter('nl2br')
+def nl2br_filter(text):
+    """Перетворює переноси рядків на HTML <br>"""
+    if not text:
+        return ''
+    return text.replace('\n', '<br>')
 
 
 @app.template_filter('status_badge_color')
@@ -358,6 +367,15 @@ def dashboard():
         tickets = ticket_manager.get_user_tickets(current_user.user_id, limit=10)
         cartridge_stats = {}
     
+    # Перевіряємо активні чати для кожного тікета (тільки для користувачів з Telegram)
+    chat_manager = get_chat_manager()
+    for ticket in tickets:
+        # Чат доступний тільки для користувачів з Telegram (user_id > 0)
+        if ticket['user_id'] > 0:
+            ticket['chat_is_active'] = chat_manager.is_chat_active(ticket['id'])
+        else:
+            ticket['chat_is_active'] = False
+    
     return render_template('dashboard.html', 
                          tickets=tickets,
                          cartridge_stats=cartridge_stats,
@@ -458,6 +476,15 @@ def tickets():
     status_manager = get_status_manager()
     all_statuses = status_manager.get_all_statuses(active_only=True)
     
+    # Перевіряємо активні чати для кожного тікета (тільки для користувачів з Telegram)
+    chat_manager = get_chat_manager()
+    for ticket in tickets:
+        # Чат доступний тільки для користувачів з Telegram (user_id > 0)
+        if ticket['user_id'] > 0:
+            ticket['chat_is_active'] = chat_manager.is_chat_active(ticket['id'])
+        else:
+            ticket['chat_is_active'] = False
+    
     return render_template('tickets.html', 
                          tickets=tickets, 
                          companies=companies, 
@@ -554,6 +581,11 @@ def ticket_detail(ticket_id):
                 for c in companies_list
             ]
     
+    # Перевіряємо активний чат (тільки для користувачів з Telegram, user_id > 0)
+    chat_manager = get_chat_manager()
+    has_telegram = ticket['user_id'] > 0  # user_id = -1 для веб-користувачів без Telegram
+    chat_is_active = chat_manager.is_chat_active(ticket_id) if (current_user.is_admin and has_telegram) else False
+    
     return render_template('ticket_detail.html', 
                          ticket=ticket, 
                          logs=logs, 
@@ -561,7 +593,156 @@ def ticket_detail(ticket_id):
                          printer_info=printer_info,
                          compatible_cartridges=compatible_cartridges,
                          users=users,
-                         companies=companies)
+                         companies=companies,
+                         chat_is_active=chat_is_active,
+                         has_telegram=has_telegram)
+
+
+@app.route('/ticket/<int:ticket_id>/chat')
+@admin_required
+def ticket_chat(ticket_id):
+    """Сторінка чату з користувачем"""
+    ticket_manager = get_ticket_manager()
+    ticket = ticket_manager.get_ticket(ticket_id)
+    
+    if not ticket:
+        flash('Заявка не знайдена.', 'danger')
+        return redirect(url_for('tickets'))
+    
+    # Перевіряємо, чи користувач має Telegram (user_id > 0)
+    # user_id = -1 для веб-користувачів без Telegram
+    if ticket['user_id'] <= 0:
+        flash('Чат недоступний для веб-користувачів без прив\'язки до Telegram.', 'warning')
+        return redirect(url_for('ticket_detail', ticket_id=ticket_id))
+    
+    chat_manager = get_chat_manager()
+    
+    # Перевіряємо та закриваємо неактивні чати (3 години)
+    chat_manager.auto_close_inactive_chats(hours=3)
+    
+    # Перевіряємо, чи активний чат
+    is_active = chat_manager.is_chat_active(ticket_id)
+    
+    # Отримуємо історію чату (завжди, навіть якщо чат закритий)
+    chat_history = chat_manager.get_chat_history(ticket_id)
+    
+    # Перевіряємо, чи є хоча б одне повідомлення в історії
+    has_history = len(chat_history) > 0
+    
+    # Позначаємо повідомлення як прочитані
+    chat_manager.mark_messages_as_read(ticket_id, 'admin')
+    
+    # Отримуємо інформацію про користувача
+    with get_session() as session:
+        user = session.query(User).filter(User.user_id == ticket['user_id']).first()
+        user_name = user.full_name if user and user.full_name else (user.username if user else f"Користувач {ticket['user_id']}")
+    
+    return render_template('ticket_chat.html',
+                         ticket=ticket,
+                         chat_history=chat_history,
+                         is_active=is_active,
+                         has_history=has_history,
+                         user_name=user_name)
+
+
+@app.route('/ticket/<int:ticket_id>/chat/start', methods=['POST'])
+@admin_required
+def start_chat(ticket_id):
+    """Розпочати чат"""
+    ticket_manager = get_ticket_manager()
+    ticket = ticket_manager.get_ticket(ticket_id)
+    
+    if not ticket:
+        flash('Заявка не знайдена.', 'danger')
+        return redirect(url_for('tickets'))
+    
+    # Перевіряємо, чи користувач має Telegram (user_id > 0)
+    if ticket['user_id'] <= 0:
+        flash('Чат недоступний для веб-користувачів без прив\'язки до Telegram.', 'warning')
+        return redirect(url_for('ticket_detail', ticket_id=ticket_id))
+    
+    chat_manager = get_chat_manager()
+    admin_id = current_user.user_id
+    
+    if chat_manager.start_chat(ticket_id, admin_id):
+        flash('Чат розпочато.', 'success')
+    else:
+        flash('Помилка розпочаття чату.', 'danger')
+    
+    return redirect(url_for('ticket_chat', ticket_id=ticket_id))
+
+
+@app.route('/ticket/<int:ticket_id>/chat/send', methods=['POST'])
+@admin_required
+def send_chat_message(ticket_id):
+    """Відправити повідомлення в чат"""
+    message = request.form.get('message', '').strip()
+    
+    if not message:
+        flash('Повідомлення не може бути порожнім.', 'danger')
+        return redirect(url_for('ticket_chat', ticket_id=ticket_id))
+    
+    chat_manager = get_chat_manager()
+    admin_id = current_user.user_id
+    
+    if chat_manager.send_message(ticket_id, 'admin', admin_id, message):
+        flash('Повідомлення відправлено.', 'success')
+    else:
+        flash('Помилка відправки повідомлення.', 'danger')
+    
+    return redirect(url_for('ticket_chat', ticket_id=ticket_id))
+
+
+@app.route('/ticket/<int:ticket_id>/chat/end', methods=['POST'])
+@admin_required
+def end_chat(ticket_id):
+    """Завершити чат"""
+    chat_manager = get_chat_manager()
+    admin_id = current_user.user_id
+    
+    if chat_manager.end_chat(ticket_id, admin_id):
+        flash('Чат закрито.', 'success')
+    else:
+        flash('Помилка закриття чату.', 'danger')
+    
+    return redirect(url_for('ticket_chat', ticket_id=ticket_id))
+
+
+@app.route('/ticket/<int:ticket_id>/chat/reopen', methods=['POST'])
+@admin_required
+def reopen_chat(ticket_id):
+    """Відновити чат"""
+    chat_manager = get_chat_manager()
+    admin_id = current_user.user_id
+    
+    if chat_manager.reopen_chat(ticket_id, admin_id):
+        flash('Чат відновлено.', 'success')
+    else:
+        flash('Помилка відновлення чату.', 'danger')
+    
+    return redirect(url_for('ticket_chat', ticket_id=ticket_id))
+
+
+@app.route('/api/tickets/<int:ticket_id>/chat/messages')
+@admin_required
+def get_chat_messages_api(ticket_id):
+    """API для отримання повідомлень чату"""
+    chat_manager = get_chat_manager()
+    messages = chat_manager.get_chat_history(ticket_id)
+    
+    # Позначаємо повідомлення як прочитані
+    chat_manager.mark_messages_as_read(ticket_id, 'admin')
+    
+    return jsonify({'messages': messages})
+
+
+@app.route('/api/tickets/<int:ticket_id>/chat/unread')
+@admin_required
+def get_chat_unread_api(ticket_id):
+    """API для отримання кількості непрочитаних повідомлень"""
+    chat_manager = get_chat_manager()
+    unread_count = chat_manager.get_unread_count(ticket_id, 'admin')
+    return jsonify({'unread_count': unread_count})
 
 
 @app.route('/ticket/<int:ticket_id>/change_status', methods=['POST'])

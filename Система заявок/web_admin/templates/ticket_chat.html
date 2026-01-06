@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+
+{% block title %}Чат - Заявка #{{ ticket['id'] }} - Система заявок{% endblock %}
+
+{% block extra_head %}
+<link href="{{ url_for('static', filename='css/chat.css') }}" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="bi bi-chat-dots"></i> Чат - Заявка #{{ ticket['id'] }}
+            <a href="{{ url_for('ticket_detail', ticket_id=ticket['id']) }}" class="btn btn-sm btn-outline-secondary ms-2">
+                <i class="bi bi-arrow-left"></i> Назад до заявки
+            </a>
+        </h1>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-person-circle"></i> {{ user_name }}
+                </h5>
+                <div>
+                    {% if is_active %}
+                        <span class="badge bg-success">Чат активний</span>
+                    {% else %}
+                        <span class="badge bg-secondary">Чат закритий</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="card-body">
+                {% if chat_history %}
+                <div id="chat-messages" class="chat-messages">
+                    {% for msg in chat_history %}
+                        <div class="chat-message {% if msg.sender_type == 'admin' %}chat-message-admin{% else %}chat-message-user{% endif %}">
+                            <div class="chat-message-header">
+                                <strong>
+                                    {% if msg.sender_type == 'admin' %}
+                                        <i class="bi bi-shield-check"></i> Адміністратор
+                                    {% else %}
+                                        <i class="bi bi-person"></i> Користувач
+                                    {% endif %}
+                                </strong>
+                                <span class="chat-message-time">
+                                    {{ msg.created_at[:19] if msg.created_at else '' }}
+                                </span>
+                            </div>
+                            <div class="chat-message-body">
+                                {{ msg.message | nl2br | safe }}
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+                
+                {% if not is_active %}
+                <div class="alert alert-secondary mt-3">
+                    <i class="bi bi-info-circle"></i> <strong>Історія переписки</strong> (чат закритий). Ви можете відновити чат нижче, щоб продовжити переписку.
+                </div>
+                {% endif %}
+                {% else %}
+                <div class="alert alert-secondary">
+                    <i class="bi bi-info-circle"></i> Переписки поки немає.
+                </div>
+                {% endif %}
+                
+                {% if is_active %}
+                    <form method="POST" action="{{ url_for('send_chat_message', ticket_id=ticket['id']) }}" class="mt-3">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <div class="input-group">
+                            <input type="text" name="message" class="form-control" placeholder="Введіть повідомлення..." required autofocus>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-send"></i> Відправити
+                            </button>
+                        </div>
+                    </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Управління чатом</h5>
+            </div>
+            <div class="card-body">
+                {% if is_active %}
+                    <form method="POST" action="{{ url_for('end_chat', ticket_id=ticket['id']) }}" class="mb-2">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <button type="submit" class="btn btn-danger w-100" onclick="return confirm('Ви впевнені, що хочете закрити чат?');">
+                            <i class="bi bi-x-circle"></i> Закрити чат
+                        </button>
+                    </form>
+                {% else %}
+                    <form method="POST" action="{{ url_for('reopen_chat', ticket_id=ticket['id']) }}" class="mb-2">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <button type="submit" class="btn btn-success w-100">
+                            <i class="bi bi-arrow-clockwise"></i> Відновити чат
+                        </button>
+                    </form>
+                {% endif %}
+                
+                <a href="{{ url_for('ticket_detail', ticket_id=ticket['id']) }}" class="btn btn-outline-secondary w-100">
+                    <i class="bi bi-arrow-left"></i> Назад до заявки
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Автооновлення повідомлень кожні 5 секунд
+{% if is_active %}
+let lastMessageId = {{ chat_history[-1].id if chat_history else 0 }};
+let autoRefreshInterval = setInterval(function() {
+    fetch('{{ url_for("get_chat_messages_api", ticket_id=ticket["id"]) }}')
+        .then(response => response.json())
+        .then(data => {
+            if (data.messages && data.messages.length > 0) {
+                const newMessages = data.messages.filter(msg => msg.id > lastMessageId);
+                if (newMessages.length > 0) {
+                    const chatMessages = document.getElementById('chat-messages');
+                    newMessages.forEach(msg => {
+                        const messageDiv = document.createElement('div');
+                        messageDiv.className = `chat-message ${msg.sender_type === 'admin' ? 'chat-message-admin' : 'chat-message-user'}`;
+                        messageDiv.innerHTML = `
+                            <div class="chat-message-header">
+                                <strong>
+                                    ${msg.sender_type === 'admin' ? '<i class="bi bi-shield-check"></i> Адміністратор' : '<i class="bi bi-person"></i> Користувач'}
+                                </strong>
+                                <span class="chat-message-time">${msg.created_at ? msg.created_at.substring(0, 19) : ''}</span>
+                            </div>
+                            <div class="chat-message-body">${msg.message.replace(/\n/g, '<br>')}</div>
+                        `;
+                        chatMessages.appendChild(messageDiv);
+                        lastMessageId = Math.max(lastMessageId, msg.id);
+                    });
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                }
+            }
+        })
+        .catch(error => console.error('Помилка оновлення повідомлень:', error));
+}, 5000);
+
+// Зупиняємо автооновлення при виході зі сторінки
+window.addEventListener('beforeunload', function() {
+    clearInterval(autoRefreshInterval);
+});
+{% endif %}
+
+// Прокрутка до останнього повідомлення при завантаженні
+document.addEventListener('DOMContentLoaded', function() {
+    const chatMessages = document.getElementById('chat-messages');
+    if (chatMessages) {
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+});
+</script>
+{% endblock %}
+

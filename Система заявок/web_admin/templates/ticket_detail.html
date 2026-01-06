@@ -331,6 +331,32 @@
                 
                 <hr>
                 
+                {% if has_telegram %}
+                    {% if chat_is_active %}
+                    <a href="{{ url_for('ticket_chat', ticket_id=ticket['id']) }}" class="btn btn-info w-100 mb-3">
+                        <i class="bi bi-chat-dots"></i> Чат з користувачем 💬
+                    </a>
+                    {% else %}
+                    <div class="d-flex gap-2 mb-3">
+                        <a href="{{ url_for('ticket_chat', ticket_id=ticket['id']) }}" class="btn btn-outline-info flex-fill">
+                            <i class="bi bi-chat-text"></i> Історія чату
+                        </a>
+                        <form method="POST" action="{{ url_for('start_chat', ticket_id=ticket['id']) }}" class="flex-fill">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                            <button type="submit" class="btn btn-info w-100">
+                                <i class="bi bi-chat-dots"></i> Почати чат
+                            </button>
+                        </form>
+                    </div>
+                    {% endif %}
+                {% else %}
+                <div class="alert alert-secondary mb-3">
+                    <i class="bi bi-info-circle"></i> Чат недоступний для веб-користувачів без прив'язки до Telegram.
+                </div>
+                {% endif %}
+                
+                <hr>
+                
                 <form method="POST" action="{{ url_for('delete_ticket', ticket_id=ticket['id']) }}" 
                       onsubmit="return confirm('Ви впевнені, що хочете видалити заявку #{{ ticket['id'] }}? Цю дію неможливо скасувати.');">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>

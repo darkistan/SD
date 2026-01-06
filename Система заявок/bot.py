@@ -18,6 +18,7 @@ if __name__ == '__main__':
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
+from telegram.error import Conflict, TimedOut, NetworkError, RetryAfter
 
 from auth import auth_manager
 from logger import logger
@@ -29,6 +30,7 @@ from ticket_manager import get_ticket_manager
 from printer_manager import get_printer_manager
 from status_manager import get_status_manager
 from poll_manager import get_poll_manager
+from chat_manager import get_chat_manager
 from datetime import datetime
 
 # Завантажуємо змінні середовища
@@ -39,6 +41,10 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 # Глобальні змінні для зберігання стану створення заявки
 ticket_creation_state: Dict[int, Dict[str, Any]] = {}
+
+# Глобальна змінна для зберігання активного чату для користувача
+# Формат: {user_id: ticket_id}
+chat_active_for_user: Dict[int, int] = {}
 
 
 def get_status_ua(status: str) -> str:
@@ -113,6 +119,10 @@ async def menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     """Команда меню"""
     user_id = update.effective_user.id
     keyboard = create_menu_keyboard(user_id)
+    
+    # Виходимо з режиму чату, якщо користувач був в ньому
+    if user_id in chat_active_for_user:
+        del chat_active_for_user[user_id]
     
     if auth_manager.is_user_allowed(user_id):
         message_text = "📋 <b>Головне меню</b>\n\nОберіть дію:"
@@ -233,7 +243,7 @@ async def my_tickets_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("➕ Створити нову заявку", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "new_ticket"))],
-            [InlineKeyboardButton("⬅️ Повернутись назад", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "back_to_menu"))]
+            [InlineKeyboardButton("⬅️ Назад", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "menu"))]
         ])
         
         # Підтримка як команди, так і callback
@@ -355,8 +365,26 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             await query.answer("❌ Помилка обробки голосування.", show_alert=True)
             return
     
+    # Перевіряємо, чи є активний чат для користувача
+    # Якщо так - дозволяємо автоматичне оновлення CSRF токена
+    chat_manager = get_chat_manager()
+    has_active_chat = False
+    if user_id in chat_active_for_user:
+        has_active_chat = chat_manager.is_chat_active(chat_active_for_user[user_id])
+    else:
+        # Перевіряємо в БД
+        with get_session() as session:
+            from models import Ticket
+            tickets = session.query(Ticket).filter(Ticket.user_id == user_id).all()
+            for ticket in tickets:
+                if chat_manager.is_chat_active(ticket.id):
+                    has_active_chat = True
+                    chat_active_for_user[user_id] = ticket.id
+                    break
+    
     # Витягуємо callback дані з CSRF перевіркою
-    callback_data = csrf_manager.extract_callback_data(user_id, query.data)
+    # Якщо користувач має активний чат, дозволяємо автоматичне оновлення токена
+    callback_data = csrf_manager.extract_callback_data(user_id, query.data, allow_refresh=has_active_chat)
     if not callback_data:
         logger.log_csrf_expired_token(user_id, query.data)
         await query.edit_message_text("❌ Помилка безпеки. Спробуйте ще раз.")
@@ -383,6 +411,24 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     elif callback_data == "my_tickets":
         await my_tickets_command(update, context)
         # Не видаляємо повідомлення, бо my_tickets_command вже редагує його через edit_message_text
+    elif callback_data == "menu":
+        # Повернення до головного меню
+        user_id = query.from_user.id
+        keyboard = create_menu_keyboard(user_id)
+        
+        if auth_manager.is_user_allowed(user_id):
+            message_text = "📋 <b>Головне меню</b>\n\nОберіть дію:"
+        else:
+            message_text = "🔐 <b>Доступ до системи</b>\n\nЗапросите доступ для використання системи."
+        
+        try:
+            await query.edit_message_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+        except Exception as e:
+            logger.log_error(f"Помилка редагування повідомлення меню: {e}")
+            try:
+                await query.message.reply_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+            except Exception as reply_error:
+                logger.log_error(f"Помилка відправки повідомлення меню: {reply_error}")
     elif callback_data == "help":
         help_text = (
             "ℹ️ <b>Довідка</b>\n\n"
@@ -398,10 +444,6 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             "Всі зміни статусів заявок надсилаються автоматично."
         )
         await query.edit_message_text(help_text, parse_mode='HTML')
-    elif callback_data == "back_to_menu":
-        keyboard = create_menu_keyboard(user_id)
-        message_text = "📋 <b>Головне меню</b>\n\nОберіть дію:"
-        await query.edit_message_text(message_text, reply_markup=keyboard, parse_mode='HTML')
     elif callback_data.startswith("ticket_type:"):
         ticket_type = callback_data.split(":")[1]
         await handle_ticket_type_selection(update, context, user_id, ticket_type)
@@ -838,16 +880,48 @@ def main():
     application.add_handler(CommandHandler("my_tickets", my_tickets_command))
     application.add_handler(CallbackQueryHandler(callback_handler))
     
-    # Обробник текстових повідомлень для введення кількості та коментарів
+    # Обробник текстових повідомлень для введення кількості, коментарів та чату
     async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         user_id = update.effective_user.id
+        text = update.message.text.strip()
         
+        # Перевіряємо, чи є активний чат для користувача
+        chat_manager = get_chat_manager()
+        
+        # Шукаємо активний чат для користувача
+        if user_id not in chat_active_for_user:
+            # Перевіряємо, чи є активний чат в БД
+            with get_session() as session:
+                from models import Ticket
+                tickets = session.query(Ticket).filter(Ticket.user_id == user_id).all()
+                for ticket in tickets:
+                    if chat_manager.is_chat_active(ticket.id):
+                        chat_active_for_user[user_id] = ticket.id
+                        break
+        
+        # Якщо знайдено активний чат
+        if user_id in chat_active_for_user:
+            ticket_id = chat_active_for_user[user_id]
+            
+            # Перевіряємо, чи чат дійсно активний
+            if chat_manager.is_chat_active(ticket_id):
+                # Відправляємо повідомлення в чат
+                if chat_manager.send_message(ticket_id, 'user', user_id, text):
+                    await update.message.reply_text("✅ Повідомлення відправлено адміністратору.")
+                else:
+                    await update.message.reply_text("❌ Помилка відправки повідомлення.")
+            else:
+                # Чат закрито, видаляємо зі стану
+                del chat_active_for_user[user_id]
+                await update.message.reply_text("❌ Чат закрито. Ви не можете відправляти повідомлення.")
+            return
+        
+        # Обробка створення заявки
         if user_id not in ticket_creation_state:
             return
         
         state = ticket_creation_state[user_id]
         step = state.get('step')
-        text = update.message.text.strip()
         
         if step == 'quantity':
             await handle_quantity_input(update, context, user_id, text)
@@ -856,9 +930,49 @@ def main():
     
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))
     
+    # Обробник помилок Telegram
+    async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Обробка помилок Telegram Bot API"""
+        error = context.error
+        
+        if isinstance(error, Conflict):
+            # Конфлікт через кілька екземплярів бота - логуємо один раз
+            logger.log_error(f"Конфлікт: запущено кілька екземплярів бота. Переконайтеся, що запущено лише один екземпляр.")
+            return
+        
+        if isinstance(error, RetryAfter):
+            # Rate limit - просто чекаємо
+            logger.log_error(f"Rate limit: {error.retry_after} секунд")
+            return
+        
+        if isinstance(error, (TimedOut, NetworkError)):
+            # Мережеві помилки - логуємо, але не критично
+            logger.log_error(f"Мережева помилка: {error}")
+            return
+        
+        # Інші помилки - логуємо з деталями
+        logger.log_error(f"Помилка Telegram Bot API: {error}")
+        if update:
+            logger.log_error(f"Update: {update}")
+    
+    application.add_error_handler(error_handler)
+    
     # Очищення прострочених CSRF токенів кожні 10 хвилин
     async def cleanup_csrf_tokens(context: ContextTypes.DEFAULT_TYPE):
         csrf_manager.cleanup_expired_tokens()
+    
+    # Автоматичне закриття неактивних чатів кожні 30 хвилин
+    async def auto_close_inactive_chats(context: ContextTypes.DEFAULT_TYPE):
+        chat_manager = get_chat_manager()
+        closed_count = chat_manager.auto_close_inactive_chats(hours=3)
+        if closed_count > 0:
+            # Очищаємо стан для закритих чатів
+            tickets_to_remove = []
+            for user_id, ticket_id in chat_active_for_user.items():
+                if not chat_manager.is_chat_active(ticket_id):
+                    tickets_to_remove.append(user_id)
+            for user_id in tickets_to_remove:
+                del chat_active_for_user[user_id]
     
     # Перевіряємо наявність JobQueue, придушуючи попередження
     with warnings.catch_warnings():
@@ -867,9 +981,33 @@ def main():
     
     if job_queue is not None:
         job_queue.run_repeating(cleanup_csrf_tokens, interval=600, first=600)
+        job_queue.run_repeating(auto_close_inactive_chats, interval=1800, first=1800)  # Кожні 30 хвилин
     else:
         # JobQueue не обов'язковий - CSRF токени очищаються при перевірці
         logger.log_info("CSRF токени будуть очищатися при перевірці (JobQueue не встановлено)")
+        # Для автоматичного закриття чатів використовуємо threading
+        import threading
+        def auto_close_thread():
+            import time
+            while True:
+                time.sleep(1800)  # 30 хвилин
+                try:
+                    chat_manager = get_chat_manager()
+                    closed_count = chat_manager.auto_close_inactive_chats(hours=3)
+                    if closed_count > 0:
+                        # Очищаємо стан для закритих чатів
+                        tickets_to_remove = []
+                        for user_id, ticket_id in list(chat_active_for_user.items()):
+                            if not chat_manager.is_chat_active(ticket_id):
+                                tickets_to_remove.append(user_id)
+                        for user_id in tickets_to_remove:
+                            del chat_active_for_user[user_id]
+                except Exception as e:
+                    logger.log_error(f"Помилка автоматичного закриття чатів: {e}")
+        
+        thread = threading.Thread(target=auto_close_thread, daemon=True)
+        thread.start()
+        logger.log_info("Автоматичне закриття неактивних чатів запущено через threading")
     
     # Запускаємо бота
     logger.log_info("Telegram бот запущено")

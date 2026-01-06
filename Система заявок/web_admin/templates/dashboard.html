@@ -35,8 +35,17 @@
                         </thead>
                         <tbody>
                             {% for ticket in tickets %}
-                            <tr {% if ticket.status == 'CLOSED' or ticket.status == 'CANCELLED' %}class="ticket-closed"{% endif %}>
-                                <td>#{{ ticket.id }}</td>
+                            <tr {% if ticket.status == 'CLOSED' or ticket.status == 'CANCELLED' %}class="ticket-closed"{% elif ticket.chat_is_active %}class="table-info"{% endif %}>
+                                <td>
+                                    #{{ ticket.id }}
+                                    {% if ticket.chat_is_active %}
+                                    <a href="{{ url_for('ticket_chat', ticket_id=ticket.id) }}" class="text-decoration-none ms-2" title="Активний чат - натисніть для відкриття">
+                                        <span class="badge bg-info text-dark">
+                                            <i class="bi bi-chat-dots-fill"></i> Чат активний
+                                        </span>
+                                    </a>
+                                    {% endif %}
+                                </td>
                                 <td>{{ ticket.ticket_type | ticket_type_ua }}</td>
                                 <td>
                                     {% if ticket.status == 'CLOSED' or ticket.status == 'CANCELLED' %}
@@ -64,6 +73,11 @@
                                     <a href="{{ url_for('ticket_detail', ticket_id=ticket.id) }}" class="btn btn-sm btn-primary">
                                         <i class="bi bi-eye"></i> Переглянути
                                     </a>
+                                    {% if ticket.chat_is_active %}
+                                    <a href="{{ url_for('ticket_chat', ticket_id=ticket.id) }}" class="btn btn-sm btn-info ms-1" title="Відкрити чат">
+                                        <i class="bi bi-chat-dots-fill"></i>
+                                    </a>
+                                    {% endif %}
                                 </td>
                             </tr>
                             {% endfor %}

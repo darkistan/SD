@@ -533,7 +533,18 @@ async def handle_ticket_type_selection(update: Update, context: ContextTypes.DEF
     
     # Отримуємо список принтерів
     printer_manager = get_printer_manager()
-    printers = printer_manager.get_all_printers(active_only=True)
+    
+    # Спочатку перевіряємо, чи є прив'язані принтери у користувача
+    user_printers = printer_manager.get_user_printers(user_id, active_only=True)
+    
+    if user_printers:
+        # Сценарій А: Є прив'язані принтери - показуємо тільки їх
+        printers = user_printers
+        message_header = "🖨️ <b>Ваші принтери</b>\n\n"
+    else:
+        # Сценарій Б: Немає прив'язок - показуємо всі принтери
+        printers = printer_manager.get_all_printers(active_only=True)
+        message_header = "🖨️ <b>Оберіть принтер</b>\n\n"
     
     if not printers:
         await update.callback_query.edit_message_text("❌ Список принтерів порожній. Зверніться до адміністратора.")
@@ -553,7 +564,7 @@ async def handle_ticket_type_selection(update: Update, context: ContextTypes.DEF
     
     type_name = "Заправка картриджів" if ticket_type == "REFILL" else "Ремонт принтера"
     await update.callback_query.edit_message_text(
-        f"🖨️ <b>Оберіть принтер</b>\n\nТип заявки: {type_name}",
+        f"{message_header}Тип заявки: {type_name}",
         reply_markup=keyboard,
         parse_mode='HTML'
     )

@@ -102,6 +102,7 @@ class DatabaseManager:
             self.migrate_add_printer_service_enabled_to_company()
             self.migrate_add_user_info_to_company()
             self.migrate_add_executor_to_ticket()
+            self.migrate_create_user_printers_table()
             
             # Заповнюємо справочник статусів (якщо таблиця порожня)
             self.migrate_create_ticket_statuses()
@@ -327,6 +328,19 @@ class DatabaseManager:
                         logger.log_info("Додано колонку executor_id до tickets")
         except Exception as e:
             logger.log_error(f"Помилка міграції додавання executor_id: {e}")
+    
+    def migrate_create_user_printers_table(self):
+        """Міграція: створення таблиці user_printers для зв'язку користувач-принтер"""
+        try:
+            inspector = inspect(self.engine)
+            if 'user_printers' in inspector.get_table_names():
+                return  # Таблиця вже існує
+            
+            # Таблиця буде створена через Base.metadata.create_all()
+            # Ця міграція лише для логування
+            logger.log_info("Таблиця user_printers буде створена через Base.metadata.create_all()")
+        except Exception as e:
+            logger.log_error(f"Помилка міграції створення user_printers: {e}")
     
     @contextmanager
     def get_session(self, max_retries: int = 3) -> Generator[Session, None, None]:

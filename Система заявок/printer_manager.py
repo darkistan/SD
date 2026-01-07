@@ -4,7 +4,7 @@
 from typing import List, Optional, Dict, Any
 
 from database import get_session
-from models import Printer, CartridgeType, PrinterCartridgeCompatibility
+from models import Printer, CartridgeType, PrinterCartridgeCompatibility, UserPrinter
 from logger import logger
 
 
@@ -45,6 +45,41 @@ class PrinterManager:
                 ]
         except Exception as e:
             logger.log_error(f"Помилка отримання принтерів: {e}")
+            return []
+    
+    def get_user_printers(self, user_id: int, active_only: bool = True) -> List[Dict[str, Any]]:
+        """
+        Отримання принтерів, прив'язаних до користувача
+        
+        Args:
+            user_id: ID користувача
+            active_only: Показувати тільки активні
+        
+        Returns:
+            Список принтерів користувача
+        """
+        try:
+            with get_session() as session:
+                query = session.query(Printer).join(UserPrinter).filter(
+                    UserPrinter.user_id == user_id
+                )
+                if active_only:
+                    query = query.filter(Printer.is_active == True)
+                
+                printers = query.order_by(Printer.model).all()
+                
+                return [
+                    {
+                        'id': p.id,
+                        'model': p.model,
+                        'description': p.description,
+                        'is_active': p.is_active,
+                        'created_at': p.created_at.isoformat() if p.created_at else None
+                    }
+                    for p in printers
+                ]
+        except Exception as e:
+            logger.log_error(f"Помилка отримання принтерів користувача {user_id}: {e}")
             return []
     
     def get_compatible_cartridges(self, printer_id: int) -> List[Dict[str, Any]]:
@@ -351,6 +386,73 @@ class PrinterManager:
                 return True
         except Exception as e:
             logger.log_error(f"Помилка видалення сумісності: {e}")
+            return False
+    
+    def add_user_printer(self, user_id: int, printer_id: int) -> bool:
+        """
+        Додавання прив'язки користувача до принтера
+        
+        Args:
+            user_id: ID користувача
+            printer_id: ID принтера
+        
+        Returns:
+            True якщо прив'язку додано
+        """
+        try:
+            with get_session() as session:
+                # Перевіряємо чи не існує вже така прив'язка
+                existing = session.query(UserPrinter).filter(
+                    UserPrinter.user_id == user_id,
+                    UserPrinter.printer_id == printer_id
+                ).first()
+                
+                if existing:
+                    logger.log_warning(f"Прив'язка користувача {user_id} до принтера {printer_id} вже існує")
+                    return False
+                
+                user_printer = UserPrinter(
+                    user_id=user_id,
+                    printer_id=printer_id
+                )
+                session.add(user_printer)
+                session.commit()
+                
+                logger.log_info(f"Додано прив'язку: користувач {user_id} → принтер {printer_id}")
+                return True
+        except Exception as e:
+            logger.log_error(f"Помилка додавання прив'язки користувач-принтер: {e}")
+            return False
+    
+    def remove_user_printer(self, user_id: int, printer_id: int) -> bool:
+        """
+        Видалення прив'язки користувача до принтера
+        
+        Args:
+            user_id: ID користувача
+            printer_id: ID принтера
+        
+        Returns:
+            True якщо прив'язку видалено
+        """
+        try:
+            with get_session() as session:
+                user_printer = session.query(UserPrinter).filter(
+                    UserPrinter.user_id == user_id,
+                    UserPrinter.printer_id == printer_id
+                ).first()
+                
+                if not user_printer:
+                    logger.log_error(f"Прив'язка користувача {user_id} до принтера {printer_id} не знайдена")
+                    return False
+                
+                session.delete(user_printer)
+                session.commit()
+                
+                logger.log_info(f"Видалено прив'язку: користувач {user_id} → принтер {printer_id}")
+                return True
+        except Exception as e:
+            logger.log_error(f"Помилка видалення прив'язки користувач-принтер: {e}")
             return False
 
 

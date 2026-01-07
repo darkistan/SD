@@ -70,8 +70,28 @@ class Printer(Base):
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     
+    # Relationships
+    users = relationship('UserPrinter', back_populates='printer', cascade='all, delete-orphan')
+    
     def __repr__(self):
         return f"<Printer(id={self.id}, model='{self.model}', is_active={self.is_active})>"
+
+
+class UserPrinter(Base):
+    """Модель зв'язку користувача та принтера (many-to-many)"""
+    __tablename__ = 'user_printers'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.user_id', ondelete='CASCADE'), nullable=False, index=True)
+    printer_id = Column(Integer, ForeignKey('printers.id', ondelete='CASCADE'), nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.now)
+    
+    # Relationships
+    user = relationship('User', backref='user_printers')
+    printer = relationship('Printer', back_populates='users')
+    
+    def __repr__(self):
+        return f"<UserPrinter(user_id={self.user_id}, printer_id={self.printer_id})>"
 
 
 class CartridgeType(Base):

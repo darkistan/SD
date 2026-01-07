@@ -1082,10 +1082,26 @@ def users():
             for c in companies_list
         ]
         
+        # Отримуємо список принтерів та прив'язки користувачів
+        printer_manager = get_printer_manager()
+        printers = printer_manager.get_all_printers(active_only=True)
+        
+        # Отримуємо прив'язки користувачів до принтерів
+        from models import UserPrinter
+        user_printers = {}
+        for user in all_users:
+            user_printers[user.user_id] = [
+                up.printer_id for up in session.query(UserPrinter).filter(
+                    UserPrinter.user_id == user.user_id
+                ).all()
+            ]
+        
         return render_template('users.html',
                              users=all_users,
                              pending_requests=pending_requests,
                              companies=companies,
+                             printers=printers,
+                             user_printers=user_printers,
                              sort_by=sort_by,
                              sort_order=sort_order)
 
@@ -1213,6 +1229,38 @@ def toggle_user_vip(user_id):
             flash(f'VIP статус для користувача {status}.', 'success')
         else:
             flash('Користувача не знайдено.', 'danger')
+    
+    return redirect(url_for('users'))
+
+
+@app.route('/users/<int:user_id>/add_printer', methods=['POST'])
+@admin_required
+def add_user_printer(user_id):
+    """Додавання прив'язки користувача до принтера"""
+    printer_id = request.form.get('printer_id', type=int)
+    
+    if not printer_id:
+        flash('Принтер не вибрано.', 'danger')
+        return redirect(url_for('users'))
+    
+    printer_manager = get_printer_manager()
+    if printer_manager.add_user_printer(user_id, printer_id):
+        flash('Принтер прив\'язано до користувача.', 'success')
+    else:
+        flash('Помилка прив\'язки принтера. Можливо, прив\'язка вже існує.', 'danger')
+    
+    return redirect(url_for('users'))
+
+
+@app.route('/users/<int:user_id>/remove_printer/<int:printer_id>', methods=['POST'])
+@admin_required
+def remove_user_printer(user_id, printer_id):
+    """Видалення прив'язки користувача до принтера"""
+    printer_manager = get_printer_manager()
+    if printer_manager.remove_user_printer(user_id, printer_id):
+        flash('Прив\'язку принтера видалено.', 'success')
+    else:
+        flash('Помилка видалення прив\'язки.', 'danger')
     
     return redirect(url_for('users'))
 

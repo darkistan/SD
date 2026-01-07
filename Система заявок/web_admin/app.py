@@ -1076,9 +1076,9 @@ def users():
         all_users = query.all()
         pending_requests = auth_manager.get_pending_requests()
         companies_list = session.query(Company).all()
-        # Конвертуємо в список словників, щоб уникнути DetachedInstanceError
+        # Конвертуємо в список словників з інформацією про printer_service_enabled
         companies = [
-            {'id': c.id, 'name': c.name}
+            {'id': c.id, 'name': c.name, 'printer_service_enabled': c.printer_service_enabled}
             for c in companies_list
         ]
         
@@ -1243,6 +1243,18 @@ def add_user_printer(user_id):
         flash('Принтер не вибрано.', 'danger')
         return redirect(url_for('users'))
     
+    # Перевіряємо, чи користувач належить до компанії з увімкненим обслуговуванням принтерів
+    with get_session() as session:
+        user = session.query(User).filter(User.user_id == user_id).first()
+        if not user or not user.company_id:
+            flash('Користувач не належить до компанії або компанія не встановлена.', 'danger')
+            return redirect(url_for('users'))
+        
+        company = session.query(Company).filter(Company.id == user.company_id).first()
+        if not company or not company.printer_service_enabled:
+            flash('Обслуговування принтерів вимкнено для компанії користувача.', 'danger')
+            return redirect(url_for('users'))
+    
     printer_manager = get_printer_manager()
     if printer_manager.add_user_printer(user_id, printer_id):
         flash('Принтер прив\'язано до користувача.', 'success')
@@ -1256,6 +1268,18 @@ def add_user_printer(user_id):
 @admin_required
 def remove_user_printer(user_id, printer_id):
     """Видалення прив'язки користувача до принтера"""
+    # Перевіряємо, чи користувач належить до компанії з увімкненим обслуговуванням принтерів
+    with get_session() as session:
+        user = session.query(User).filter(User.user_id == user_id).first()
+        if not user or not user.company_id:
+            flash('Користувач не належить до компанії або компанія не встановлена.', 'danger')
+            return redirect(url_for('users'))
+        
+        company = session.query(Company).filter(Company.id == user.company_id).first()
+        if not company or not company.printer_service_enabled:
+            flash('Обслуговування принтерів вимкнено для компанії користувача.', 'danger')
+            return redirect(url_for('users'))
+    
     printer_manager = get_printer_manager()
     if printer_manager.remove_user_printer(user_id, printer_id):
         flash('Прив\'язку принтера видалено.', 'success')

@@ -273,9 +273,16 @@
                                         <button class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#companyModal{{ user.user_id }}">
                                             <i class="bi bi-building"></i> Компанія
                                         </button>
+                                        {% if user.company_id %}
+                                        {% for company in companies %}
+                                        {% if company.id == user.company_id and company.printer_service_enabled %}
                                         <button class="btn btn-sm btn-secondary" data-bs-toggle="modal" data-bs-target="#printersModal{{ user.user_id }}">
                                             <i class="bi bi-printer"></i> Принтери
                                         </button>
+                                        {% break %}
+                                        {% endif %}
+                                        {% endfor %}
+                                        {% endif %}
                                         {% if user.user_id > 0 %}
                                         <form method="POST" action="{{ url_for('toggle_user_notifications', user_id=user.user_id) }}" style="display:inline;">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
@@ -404,7 +411,10 @@
     </div>
 </div>
 
-<!-- Modal для управління принтерами -->
+<!-- Modal для управління принтерами (тільки для користувачів з компанією, у якої увімкнено обслуговування принтерів) -->
+{% if user.company_id %}
+{% for company in companies %}
+{% if company.id == user.company_id and company.printer_service_enabled %}
 <div class="modal fade" id="printersModal{{ user.user_id }}" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -465,6 +475,10 @@
         </div>
     </div>
 </div>
+{% break %}
+{% endif %}
+{% endfor %}
+{% endif %}
 {% endfor %}
 
 <style>

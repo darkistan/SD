@@ -103,6 +103,7 @@ class DatabaseManager:
             self.migrate_add_user_info_to_company()
             self.migrate_add_executor_to_ticket()
             self.migrate_create_user_printers_table()
+            self.migrate_create_tasks_table()
             
             # Заповнюємо справочник статусів (якщо таблиця порожня)
             self.migrate_create_ticket_statuses()
@@ -341,6 +342,27 @@ class DatabaseManager:
             logger.log_info("Таблиця user_printers буде створена через Base.metadata.create_all()")
         except Exception as e:
             logger.log_error(f"Помилка міграції створення user_printers: {e}")
+    
+    def migrate_create_tasks_table(self):
+        """Міграція: створення таблиці tasks для модуля TO DO"""
+        try:
+            inspector = inspect(self.engine)
+            if 'tasks' in inspector.get_table_names():
+                # Перевіряємо, чи є поле is_important
+                columns = [col['name'] for col in inspector.get_columns('tasks')]
+                if 'is_important' not in columns:
+                    # Додаємо поле is_important
+                    with self.engine.connect() as conn:
+                        conn.execute(text("ALTER TABLE tasks ADD COLUMN is_important BOOLEAN DEFAULT 0"))
+                        conn.commit()
+                    logger.log_info("Додано поле is_important до таблиці tasks")
+                return
+            
+            # Таблиця буде створена через Base.metadata.create_all()
+            # Ця міграція лише для логування
+            logger.log_info("Таблиця tasks буде створена через Base.metadata.create_all()")
+        except Exception as e:
+            logger.log_error(f"Помилка міграції створення tasks: {e}")
     
     @contextmanager
     def get_session(self, max_retries: int = 3) -> Generator[Session, None, None]:

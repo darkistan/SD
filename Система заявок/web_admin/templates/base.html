@@ -46,11 +46,13 @@
                             <i class="bi bi-list-ul"></i> Заявки
                         </a>
                     </li>
+                    {% if current_user.is_authenticated and current_user.is_admin %}
                     <li class="nav-item">
-                        <a class="nav-link" href="{{url_for('create_ticket')}}">
-                            <i class="bi bi-plus-circle"></i> Створити заявку
+                        <a class="nav-link" href="{{url_for('todo')}}">
+                            <i class="bi bi-list-check"></i> TO DO
                         </a>
                     </li>
+                    {% endif %}
                     {% if current_user.is_authenticated and current_user.is_admin %}
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="adminDropdown" role="button" data-bs-toggle="dropdown">

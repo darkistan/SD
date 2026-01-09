@@ -341,6 +341,67 @@ class NotificationManager:
         except Exception as e:
             logger.log_error(f"Помилка відправки оповіщення про новий запит на доступ: {e}")
             return False
+    
+    def send_todo_tasks_notification(
+        self,
+        user_id: int,
+        tasks: list
+    ) -> bool:
+        """
+        Відправка ранкового звіту про завдання на сьогодні
+        
+        Args:
+            user_id: ID користувача (адміністратора)
+            tasks: Список завдань на сьогодні
+            
+        Returns:
+            True якщо уведомлення відправлено
+        """
+        if not TELEGRAM_BOT_TOKEN:
+            return False
+        
+        if not tasks:
+            # Якщо завдань немає, не відправляємо повідомлення
+            return False
+        
+        message = "📋 <b>Завдання на сьогодні:</b>\n\n"
+        
+        for task in tasks:
+            list_name = task.get('list_name', '')
+            title = task.get('title', 'Немає назви')
+            notes = task.get('notes', '')
+            
+            if list_name:
+                message += f"[{list_name}] {title}"
+            else:
+                message += title
+            
+            if notes:
+                message += f" — {notes[:50]}{'...' if len(notes) > 50 else ''}"
+            
+            message += "\n"
+        
+        try:
+            response = requests.post(
+                f"{TELEGRAM_API_URL}/sendMessage",
+                json={
+                    'chat_id': user_id,
+                    'text': message,
+                    'parse_mode': 'HTML'
+                },
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                logger.log_info(f"Ранковий звіт про завдання відправлено користувачу {user_id}")
+                return True
+            else:
+                logger.log_warning(f"Помилка відправки ранкового звіту користувачу {user_id}: {response.text}")
+                return False
+                
+        except Exception as e:
+            logger.log_error(f"Помилка відправки ранкового звіту: {e}")
+            return False
 
 
 # Глобальний екземпляр менеджера уведомлень

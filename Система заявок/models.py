@@ -360,3 +360,29 @@ class TicketChat(Base):
     def __repr__(self):
         return f"<TicketChat(id={self.id}, ticket_id={self.ticket_id}, sender_type='{self.sender_type}', sender_id={self.sender_id})>"
 
+
+class Task(Base):
+    """Модель завдання TO DO"""
+    __tablename__ = 'tasks'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    title = Column(String(500), nullable=False)
+    notes = Column(Text, nullable=True)
+    due_date = Column(DateTime, nullable=True, index=True)
+    is_completed = Column(Boolean, default=False, index=True)
+    completed_at = Column(DateTime, nullable=True)
+    recurrence_type = Column(String(20), nullable=True)  # DAILY, WEEKDAYS, WEEKLY, MONTHLY, YEARLY
+    recurrence_original_id = Column(Integer, ForeignKey('tasks.id'), nullable=True)
+    list_name = Column(String(100), nullable=True, index=True)
+    is_important = Column(Boolean, default=False, index=True)  # Чи є завдання важливим
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_by_user_id = Column(Integer, ForeignKey('users.user_id'), nullable=True)
+    
+    # Relationships
+    creator = relationship('User', foreign_keys=[created_by_user_id])
+    original_task = relationship('Task', remote_side=[id], foreign_keys=[recurrence_original_id])
+    
+    def __repr__(self):
+        return f"<Task(id={self.id}, title='{self.title[:50]}...', is_completed={self.is_completed}, due_date={self.due_date})>"
+

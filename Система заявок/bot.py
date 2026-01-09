@@ -31,7 +31,8 @@ from printer_manager import get_printer_manager
 from status_manager import get_status_manager
 from poll_manager import get_poll_manager
 from chat_manager import get_chat_manager
-from datetime import datetime
+from task_manager import get_task_manager
+from datetime import datetime, time as dt_time, timedelta
 
 # Завантажуємо змінні середовища
 load_dotenv("config.env")
@@ -1038,6 +1039,65 @@ def main():
         thread = threading.Thread(target=auto_close_thread, daemon=True)
         thread.start()
         logger.log_info("Автоматичне закриття неактивних чатів запущено через threading")
+    
+    # Ранкові сповіщення про завдання TO DO
+    def send_morning_todo_notifications():
+        """Відправка ранкових сповіщень про завдання на сьогодні"""
+        import time as time_module
+        from notification_manager import get_notification_manager
+        
+        while True:
+            try:
+                # Розраховуємо час до наступної 09:00
+                now = datetime.now()
+                target_time = dt_time(9, 0)  # 09:00
+                
+                if now.time() < target_time:
+                    # Якщо ще не 09:00 сьогодні, чекаємо до 09:00
+                    next_run = datetime.combine(now.date(), target_time)
+                else:
+                    # Якщо вже пройшло 09:00, чекаємо до 09:00 завтра
+                    next_run = datetime.combine(now.date() + timedelta(days=1), target_time)
+                
+                wait_seconds = (next_run - now).total_seconds()
+                
+                # Чекаємо до 09:00
+                time_module.sleep(wait_seconds)
+                
+                # Відправляємо сповіщення
+                task_manager = get_task_manager()
+                notification_manager = get_notification_manager()
+                
+                # Отримуємо всіх адмінів з увімкненими оповіщеннями
+                with get_session() as session:
+                    admins = session.query(User).filter(
+                        User.role == 'admin',
+                        User.notifications_enabled == True,
+                        User.user_id > 0  # Тільки Telegram користувачі
+                    ).all()
+                    
+                    # Отримуємо завдання на сьогодні
+                    today_tasks = task_manager.get_tasks_for_today()
+                    
+                    if today_tasks:
+                        # Відправляємо кожному адміну
+                        for admin in admins:
+                            try:
+                                notification_manager.send_todo_tasks_notification(
+                                    user_id=admin.user_id,
+                                    tasks=today_tasks
+                                )
+                            except Exception as e:
+                                logger.log_error(f"Помилка відправки ранкового звіту адміну {admin.user_id}: {e}")
+                
+            except Exception as e:
+                logger.log_error(f"Помилка в ранкових сповіщеннях про завдання: {e}")
+                # У разі помилки чекаємо 1 годину перед наступною спробою
+                time_module.sleep(3600)
+    
+    todo_thread = threading.Thread(target=send_morning_todo_notifications, daemon=True)
+    todo_thread.start()
+    logger.log_info("Ранкові сповіщення про завдання TO DO запущено")
     
     # Запускаємо бота
     logger.log_info("Telegram бот запущено")

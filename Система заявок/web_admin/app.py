@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from database import init_database, get_session
-from models import User, Company, Ticket, TicketItem, ActiveSession, Log, PendingRequest, Printer, CartridgeType, PrinterCartridgeCompatibility, Contractor, TicketStatus, Poll, PollOption, PollResponse, Announcement, AnnouncementRecipient, TicketChat
+from models import User, Company, Ticket, TicketItem, ActiveSession, Log, PendingRequest, Printer, CartridgeType, PrinterCartridgeCompatibility, Contractor, TicketStatus, Poll, PollOption, PollResponse, Announcement, AnnouncementRecipient, TicketChat, Task
 from ticket_manager import get_ticket_manager
 from printer_manager import get_printer_manager
 from pdf_report_manager import get_pdf_report_manager
@@ -27,6 +27,7 @@ from status_manager import get_status_manager
 from poll_manager import get_poll_manager
 from announcement_manager import get_announcement_manager
 from chat_manager import get_chat_manager
+from task_manager import get_task_manager
 from auth import auth_manager
 from logger import logger
 
@@ -2860,6 +2861,457 @@ def apple_touch_icon():
     except FileNotFoundError:
         # Якщо іконка не знайдена, повертаємо 204 (No Content)
         return '', 204
+
+
+# ============================================================
+# TO DO МОДУЛЬ
+# ============================================================
+
+@app.route('/todo')
+@admin_required
+def todo():
+    """Головна сторінка TO DO"""
+    try:
+        task_manager = get_task_manager()
+        
+        # Отримуємо параметри фільтрації
+        filter_type = request.args.get('filter', 'all')  # all, today, overdue, list:<name>
+        list_name = request.args.get('list', None)
+        
+        # Визначаємо фільтри
+        show_completed = request.args.get('show_completed', 'false').lower() == 'true'
+        
+        if filter_type == 'completed':
+            # Показуємо тільки закриті задачі
+            filters = {'is_completed': True}
+            tasks = task_manager.get_all_tasks(filters)
+        elif filter_type == 'today':
+            tasks = task_manager.get_tasks_for_today()
+        elif filter_type == 'overdue':
+            tasks = task_manager.get_overdue_tasks()
+        elif filter_type == 'list' and list_name:
+            tasks = task_manager.get_tasks_by_list(list_name)
+        else:
+            # Показуємо невиконані, або всі якщо show_completed=True
+            if show_completed:
+                tasks = task_manager.get_all_tasks({})  # Всі задачі
+            else:
+                filters = {'is_completed': False}
+                tasks = task_manager.get_all_tasks(filters)
+        
+        # Отримуємо всі списки
+        all_lists = task_manager.get_all_lists()
+        
+        # Отримуємо завдання на сьогодні для віджету
+        today_tasks = task_manager.get_tasks_for_today()
+        
+        # Поточна дата для порівняння
+        today = datetime.now().date()
+        today_str = today.isoformat()
+        
+        # Обробляємо завдання для відображення
+        processed_tasks = []
+        for task in tasks:
+            task_dict = dict(task)
+            # Перевіряємо, чи завдання протерміноване
+            if task_dict.get('due_date'):
+                due_date_str = task_dict['due_date'][:10] if len(task_dict['due_date']) > 10 else task_dict['due_date']
+                task_dict['is_overdue'] = due_date_str < today_str and not task_dict.get('is_completed', False)
+            else:
+                task_dict['is_overdue'] = False
+            processed_tasks.append(task_dict)
+        
+        return render_template('todo.html',
+                             tasks=processed_tasks,
+                             all_lists=all_lists,
+                             today_tasks=today_tasks,
+                             filter_type=filter_type,
+                             current_list=list_name,
+                             today_str=today_str)
+    except Exception as e:
+        logger.log_error(f"Помилка завантаження сторінки TO DO: {e}")
+        flash(f'Помилка завантаження сторінки: {e}', 'danger')
+        return redirect(url_for('dashboard'))
+
+
+@app.route('/todo/task/<int:task_id>')
+@admin_required
+def todo_task_detail(task_id):
+    """Деталі завдання (AJAX)"""
+    try:
+        task_manager = get_task_manager()
+        task = task_manager.get_task(task_id)
+        
+        if not task:
+            return jsonify({'error': 'Завдання не знайдено'}), 404
+        
+        return jsonify(task)
+    except Exception as e:
+        logger.log_error(f"Помилка отримання деталей завдання {task_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/todo/task/create', methods=['POST'])
+@admin_required
+def todo_task_create():
+    """Створення завдання"""
+    try:
+        task_manager = get_task_manager()
+        
+        title = request.form.get('title', '').strip()
+        if not title:
+            flash('Назва завдання обов\'язкова!', 'danger')
+            return redirect(url_for('todo'))
+        
+        notes = request.form.get('notes', '').strip() or None
+        list_name = request.form.get('list_name', '').strip() or None
+        
+        # Парсимо дату (тільки дата, без часу)
+        due_date_str = request.form.get('due_date', '').strip()
+        due_date = None
+        if due_date_str:
+            try:
+                due_date = datetime.strptime(due_date_str, '%Y-%m-%d')
+            except ValueError:
+                flash('Невірний формат дати!', 'danger')
+                return redirect(url_for('todo'))
+        
+        recurrence_type = request.form.get('recurrence_type', '').strip()
+        # Якщо порожній рядок, встановлюємо None для відсутності повторення
+        recurrence_type = None if not recurrence_type else recurrence_type
+        
+        task_id = task_manager.create_task(
+            title=title,
+            notes=notes,
+            due_date=due_date,
+            list_name=list_name,
+            recurrence_type=recurrence_type,
+            user_id=current_user.user_id
+        )
+        
+        if task_id:
+            flash('Завдання створено!', 'success')
+        else:
+            flash('Помилка створення завдання!', 'danger')
+        
+        return redirect(url_for('todo'))
+    except Exception as e:
+        logger.log_error(f"Помилка створення завдання: {e}")
+        flash(f'Помилка створення завдання: {e}', 'danger')
+        return redirect(url_for('todo'))
+
+
+@app.route('/todo/task/<int:task_id>/update', methods=['POST'])
+@admin_required
+def todo_task_update(task_id):
+    """Оновлення завдання"""
+    try:
+        task_manager = get_task_manager()
+        
+        title = request.form.get('title', '').strip()
+        if not title:
+            flash('Назва завдання обов\'язкова!', 'danger')
+            return redirect(url_for('todo'))
+        
+        notes = request.form.get('notes', '').strip() or None
+        list_name = request.form.get('list_name', '').strip() or None
+        
+        # Парсимо дату (тільки дата, без часу)
+        due_date_str = request.form.get('due_date', '').strip()
+        due_date = None
+        if due_date_str:
+            try:
+                due_date = datetime.strptime(due_date_str, '%Y-%m-%d')
+            except ValueError:
+                flash('Невірний формат дати!', 'danger')
+                return redirect(url_for('todo'))
+        
+        recurrence_type = request.form.get('recurrence_type', '').strip()
+        # Якщо порожній рядок, встановлюємо None для видалення повторення
+        recurrence_type = None if not recurrence_type else recurrence_type
+        
+        if task_manager.update_task(
+            task_id=task_id,
+            title=title,
+            notes=notes,
+            due_date=due_date,
+            list_name=list_name,
+            recurrence_type=recurrence_type,
+            update_recurrence=True  # Явно вказуємо, що потрібно оновити recurrence_type
+        ):
+            flash('Завдання оновлено!', 'success')
+        else:
+            flash('Помилка оновлення завдання!', 'danger')
+        
+        return redirect(url_for('todo'))
+    except Exception as e:
+        logger.log_error(f"Помилка оновлення завдання {task_id}: {e}")
+        flash(f'Помилка оновлення завдання: {e}', 'danger')
+        return redirect(url_for('todo'))
+
+
+@app.route('/todo/task/<int:task_id>/complete', methods=['POST'])
+@admin_required
+def todo_task_complete(task_id):
+    """Виконання завдання"""
+    try:
+        task_manager = get_task_manager()
+        
+        # Перевіряємо поточний стан завдання
+        task = task_manager.get_task(task_id)
+        if not task:
+            flash('Завдання не знайдено!', 'danger')
+            return redirect(url_for('todo'))
+        
+        # Якщо завдання вже виконане, відновлюємо його
+        if task.get('is_completed'):
+            if task_manager.uncomplete_task(task_id):
+                flash('Завдання відновлено!', 'success')
+            else:
+                flash('Помилка відновлення завдання!', 'danger')
+        else:
+            # Виконуємо завдання
+            if task_manager.complete_task(task_id):
+                flash('Завдання виконано!', 'success')
+            else:
+                flash('Помилка виконання завдання!', 'danger')
+        
+        return redirect(url_for('todo'))
+    except Exception as e:
+        logger.log_error(f"Помилка виконання/відновлення завдання {task_id}: {e}")
+        flash(f'Помилка: {e}', 'danger')
+        return redirect(url_for('todo'))
+
+
+@app.route('/todo/task/<int:task_id>/delete', methods=['POST'])
+@admin_required
+def todo_task_delete(task_id):
+    """Видалення завдання"""
+    try:
+        task_manager = get_task_manager()
+        
+        if task_manager.delete_task(task_id):
+            flash('Завдання видалено!', 'success')
+        else:
+            flash('Помилка видалення завдання!', 'danger')
+        
+        return redirect(url_for('todo'))
+    except Exception as e:
+        logger.log_error(f"Помилка видалення завдання {task_id}: {e}")
+        flash(f'Помилка видалення завдання: {e}', 'danger')
+        return redirect(url_for('todo'))
+
+
+@app.route('/todo/bulk_action', methods=['POST'])
+@admin_required
+def todo_bulk_action():
+    """Масова операція над завданнями"""
+    try:
+        task_manager = get_task_manager()
+        
+        action = request.form.get('action', '')
+        task_ids = [int(id) for id in request.form.getlist('task_ids')]
+        
+        if not task_ids:
+            flash('Виберіть хоча б одне завдання!', 'warning')
+            return redirect(url_for('todo'))
+        
+        if action == 'delete':
+            count = task_manager.bulk_delete(task_ids)
+            flash(f'Видалено {count} завдань!', 'success')
+        
+        elif action == 'complete':
+            count = task_manager.bulk_complete(task_ids)
+            flash(f'Виконано {count} завдань!', 'success')
+        
+        elif action == 'update_due_date':
+            due_date_str = request.form.get('new_due_date', '').strip()
+            if not due_date_str:
+                flash('Вкажіть нову дату!', 'danger')
+                return redirect(url_for('todo'))
+            
+            try:
+                due_date = datetime.strptime(due_date_str, '%Y-%m-%d')
+            except ValueError:
+                flash('Невірний формат дати!', 'danger')
+                return redirect(url_for('todo'))
+            
+            count = task_manager.bulk_update_due_date(task_ids, due_date)
+            flash(f'Оновлено дату для {count} завдань!', 'success')
+        
+        elif action == 'set_recurrence':
+            recurrence_type = request.form.get('recurrence_type', '').strip() or None
+            count = task_manager.bulk_set_recurrence(task_ids, recurrence_type)
+            flash(f'Оновлено повторення для {count} завдань!', 'success')
+        
+        else:
+            flash('Невідома операція!', 'danger')
+        
+        return redirect(url_for('todo'))
+    except Exception as e:
+        logger.log_error(f"Помилка масової операції: {e}")
+        flash(f'Помилка масової операції: {e}', 'danger')
+        return redirect(url_for('todo'))
+
+
+@app.route('/api/todo/tasks')
+@admin_required
+def api_todo_tasks():
+    """API для отримання завдань (JSON)"""
+    try:
+        task_manager = get_task_manager()
+        
+        filter_type = request.args.get('filter', 'all')
+        list_name = request.args.get('list', None)
+        
+        filters = {'is_completed': False}
+        
+        if filter_type == 'today':
+            tasks = task_manager.get_tasks_for_today()
+        elif filter_type == 'overdue':
+            tasks = task_manager.get_overdue_tasks()
+        elif filter_type == 'list' and list_name:
+            tasks = task_manager.get_tasks_by_list(list_name)
+        else:
+            tasks = task_manager.get_all_tasks(filters)
+        
+        return jsonify(tasks)
+    except Exception as e:
+        logger.log_error(f"Помилка API отримання завдань: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/todo/lists')
+@admin_required
+def api_todo_lists():
+    """API для отримання списків (JSON)"""
+    try:
+        task_manager = get_task_manager()
+        lists = task_manager.get_all_lists()
+        return jsonify(lists)
+    except Exception as e:
+        logger.log_error(f"Помилка API отримання списків: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/todo/list/create', methods=['POST'])
+@admin_required
+def todo_list_create():
+    """Створення нового списку"""
+    try:
+        list_name = request.form.get('list_name', '').strip()
+        
+        if not list_name:
+            flash('Назва списку не може бути порожньою!', 'danger')
+            return redirect(url_for('todo'))
+        
+        # Перевіряємо, чи список не системний
+        system_lists = ['Весь перелік', 'Протерміновано', 'На сьогодні', 'Важливо']
+        if list_name in system_lists:
+            flash('Ця назва зарезервована для системного списку!', 'danger')
+            return redirect(url_for('todo'))
+        
+        # Перевіряємо, чи список вже існує
+        task_manager = get_task_manager()
+        existing_lists = task_manager.get_all_lists()
+        
+        if list_name in existing_lists:
+            flash('Список з такою назвою вже існує!', 'warning')
+            return redirect(url_for('todo'))
+        
+        # Створюємо тимчасове завдання для створення списку (буде видалено після створення першого реального завдання)
+        # Або просто створюємо порожнє завдання-маркер
+        task_id = task_manager.create_task(
+            title=f'[Список "{list_name}"]',
+            notes='Тимчасове завдання для створення списку. Можна видалити після додавання реальних завдань.',
+            list_name=list_name,
+            user_id=current_user.user_id
+        )
+        
+        if task_id:
+            flash(f'Список "{list_name}" створено! Додайте завдання в цей список.', 'success')
+        else:
+            flash('Помилка створення списку!', 'danger')
+        
+    except Exception as e:
+        logger.log_error(f"Помилка створення списку: {e}")
+        flash(f'Помилка створення списку: {e}', 'danger')
+    
+    return redirect(url_for('todo'))
+
+
+@app.route('/todo/task/<int:task_id>/toggle_important', methods=['POST'])
+@admin_required
+def todo_task_toggle_important(task_id):
+    """Перемикання статусу "Важливо" для завдання"""
+    try:
+        task_manager = get_task_manager()
+        
+        task = task_manager.get_task(task_id)
+        if not task:
+            flash('Завдання не знайдено!', 'danger')
+            return redirect(url_for('todo'))
+        
+        # Перемикаємо is_important (не змінюємо list_name)
+        current_important = task.get('is_important', False)
+        new_important = not current_important
+        
+        if task_manager.update_task(
+            task_id=task_id,
+            is_important=new_important
+        ):
+            if new_important:
+                flash('Завдання додано до важливих!', 'success')
+            else:
+                flash('Завдання прибрано з важливих!', 'info')
+        else:
+            flash('Помилка оновлення завдання!', 'danger')
+        
+        return redirect(url_for('todo'))
+    except Exception as e:
+        logger.log_error(f"Помилка перемикання статусу 'Важливо' для завдання {task_id}: {e}")
+        flash(f'Помилка: {e}', 'danger')
+        return redirect(url_for('todo'))
+
+
+@app.route('/todo/list/delete', methods=['POST'])
+@admin_required
+def todo_list_delete():
+    """Видалення списку (видаляє list_name у всіх завдань цього списку)"""
+    try:
+        list_name = request.form.get('list_name', '').strip()
+        
+        if not list_name:
+            flash('Назва списку не може бути порожньою!', 'danger')
+            return redirect(url_for('todo'))
+        
+        # Перевіряємо, чи список не системний
+        system_lists = ['Весь перелік', 'Протерміновано', 'На сьогодні', 'Важливо']
+        if list_name in system_lists:
+            flash('Неможливо видалити системний список!', 'danger')
+            return redirect(url_for('todo'))
+        
+        # Видаляємо список (очищаємо list_name у всіх завдань)
+        task_manager = get_task_manager()
+        
+        with get_session() as session:
+            from models import Task
+            updated = session.query(Task).filter(Task.list_name == list_name).update(
+                {Task.list_name: None, Task.updated_at: datetime.now()},
+                synchronize_session=False
+            )
+            session.commit()
+            
+            if updated > 0:
+                flash(f'Список "{list_name}" видалено. {updated} завдань тепер без списку.', 'success')
+            else:
+                flash('Список не знайдено або він порожній.', 'warning')
+        
+    except Exception as e:
+        logger.log_error(f"Помилка видалення списку: {e}")
+        flash(f'Помилка видалення списку: {e}', 'danger')
+    
+    return redirect(url_for('todo'))
 
 
 if __name__ == '__main__':

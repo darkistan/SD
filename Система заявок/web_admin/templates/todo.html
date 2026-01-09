@@ -1,0 +1,358 @@
+{% extends "base.html" %}
+
+{% block title %}TO DO - Система заявок{% endblock %}
+
+{% block content %}
+<link href="{{ url_for('static', filename='css/todo.css') }}" rel="stylesheet">
+
+<div class="todo-container">
+    <!-- Sidebar -->
+    <div class="todo-sidebar">
+        <div class="sidebar-header">
+            <h5><i class="bi bi-list-check"></i> Списки</h5>
+        </div>
+        <div class="sidebar-content">
+            <ul class="list-group list-group-flush">
+                <li class="list-group-item">
+                    <a href="{{ url_for('todo', filter='all') }}" class="sidebar-link {% if filter_type == 'all' %}active{% endif %}">
+                        <i class="bi bi-list-ul"></i> Весь перелік
+                    </a>
+                </li>
+                <li class="list-group-item">
+                    <a href="{{ url_for('todo', filter='list', list='Важливо') }}" class="sidebar-link {% if filter_type == 'list' and current_list == 'Важливо' %}active{% endif %}">
+                        <i class="bi bi-star-fill text-warning"></i> Важливо
+                    </a>
+                </li>
+                <li class="list-group-item">
+                    <a href="{{ url_for('todo', filter='today') }}" class="sidebar-link {% if filter_type == 'today' %}active{% endif %}">
+                        <i class="bi bi-calendar-day text-primary"></i> На сьогодні
+                    </a>
+                </li>
+                <li class="list-group-item">
+                    <a href="{{ url_for('todo', filter='completed') }}" class="sidebar-link {% if filter_type == 'completed' %}active{% endif %}">
+                        <i class="bi bi-check-circle text-success"></i> Закриті
+                    </a>
+                </li>
+                <li class="list-group-item">
+                    <a href="{{ url_for('todo', filter='overdue') }}" class="sidebar-link {% if filter_type == 'overdue' %}active{% endif %}">
+                        <i class="bi bi-exclamation-triangle text-danger"></i> Протерміновано
+                    </a>
+                </li>
+            </ul>
+            
+            <hr class="my-3">
+            
+            <div class="sidebar-lists">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0">Користувацькі списки</h6>
+                </div>
+                
+                <!-- Форма створення списку -->
+                <form method="POST" action="{{ url_for('todo_list_create') }}" class="mb-3">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <div class="input-group input-group-sm">
+                        <input type="text" name="list_name" class="form-control" placeholder="Новий список" required>
+                        <button type="submit" class="btn btn-primary" title="Створити список">
+                            <i class="bi bi-plus"></i>
+                        </button>
+                    </div>
+                </form>
+                
+                {% if all_lists %}
+                <ul class="list-group list-group-flush">
+                    {% for list in all_lists %}
+                    {% if list != 'Важливо' %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <a href="{{ url_for('todo', filter='list', list=list) }}" class="sidebar-link {% if filter_type == 'list' and current_list == list %}active{% endif %} flex-grow-1">
+                            <i class="bi bi-folder"></i> {{ list }}
+                        </a>
+                        <form method="POST" action="{{ url_for('todo_list_delete') }}" style="display:inline;" class="delete-list-form" data-list-name="{{ list }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                            <input type="hidden" name="list_name" value="{{ list }}">
+                            <button type="submit" class="btn btn-sm btn-link text-danger p-0 ms-2 delete-list-btn" title="Видалити список">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </form>
+                    </li>
+                    {% endif %}
+                    {% endfor %}
+                </ul>
+                {% if not all_lists or (all_lists|length == 1 and 'Важливо' in all_lists) %}
+                <p class="text-muted small">Списків поки немає</p>
+                {% endif %}
+                {% else %}
+                <p class="text-muted small">Списків поки немає</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Main Content -->
+    <div class="todo-main">
+        <!-- Today Widget -->
+        {% if today_tasks and filter_type != 'today' %}
+        <div class="card mb-4 today-widget">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="bi bi-calendar-day"></i> На сьогодні ({{ today_tasks|length }})</h5>
+            </div>
+            <div class="card-body">
+                {% for task in today_tasks[:5] %}
+                <div class="d-flex align-items-center mb-2">
+                    <div class="form-check form-check-lg">
+                        <input type="checkbox" class="form-check-input task-complete" id="today-task-{{ task.id }}" data-task-id="{{ task.id }}" {% if task.is_completed %}checked{% endif %}>
+                        <label class="form-check-label" for="today-task-{{ task.id }}" style="cursor: pointer; font-weight: 500;">
+                            {% if task.is_completed %}
+                            <span class="text-success">Виконано</span>
+                            {% else %}
+                            <span class="text-muted">Виконати</span>
+                            {% endif %}
+                        </label>
+                    </div>
+                    <span class="ms-2 {% if task.is_completed %}text-decoration-line-through text-muted{% endif %}">
+                        {% if task.list_name %}<span class="badge bg-secondary me-1">{{ task.list_name }}</span>{% endif %}
+                        {{ task.title }}
+                    </span>
+                </div>
+                {% endfor %}
+                {% if today_tasks|length > 5 %}
+                <a href="{{ url_for('todo', filter='today') }}" class="btn btn-sm btn-outline-primary mt-2">Показати всі</a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Quick Create -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('todo_task_create') }}" class="d-flex gap-2">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="text" name="title" class="form-control" placeholder="Швидко створити завдання..." required>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-plus-circle"></i> Додати
+                    </button>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Bulk Actions Panel -->
+        <div id="bulkActionsPanel" class="card mb-4" style="display: none;">
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('todo_bulk_action') }}" id="bulkActionForm">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <div class="d-flex gap-2 align-items-center flex-wrap">
+                        <span class="me-2">Обрано: <strong id="selectedCount">0</strong></span>
+                        <button type="submit" name="action" value="complete" class="btn btn-sm btn-success">
+                            <i class="bi bi-check-circle"></i> Виконати
+                        </button>
+                        <button type="submit" name="action" value="delete" class="btn btn-sm btn-danger">
+                            <i class="bi bi-trash"></i> Видалити
+                        </button>
+                        <div class="input-group input-group-sm" style="width: 200px;">
+                            <input type="date" name="new_due_date" class="form-control">
+                            <button type="submit" name="action" value="update_due_date" class="btn btn-outline-secondary">
+                                <i class="bi bi-calendar"></i>
+                            </button>
+                        </div>
+                        <select name="recurrence_type" class="form-select form-select-sm" style="width: 150px;">
+                            <option value="">Без повторення</option>
+                            <option value="DAILY">Щодня</option>
+                            <option value="WEEKDAYS">Робочі дні</option>
+                            <option value="WEEKLY">Щотижня</option>
+                            <option value="MONTHLY">Щомісяця</option>
+                            <option value="YEARLY">Щорічно</option>
+                        </select>
+                        <button type="submit" name="action" value="set_recurrence" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-arrow-repeat"></i> Встановити повторення
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Tasks List -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    {% if filter_type == 'overdue' %}
+                        <i class="bi bi-exclamation-triangle text-danger"></i> Протерміновані завдання
+                    {% elif filter_type == 'today' %}
+                        <i class="bi bi-calendar-day text-primary"></i> Завдання на сьогодні
+                    {% elif filter_type == 'list' and current_list %}
+                        <i class="bi bi-folder"></i> {{ current_list }}
+                    {% elif filter_type == 'completed' %}
+                        <i class="bi bi-check-circle text-success"></i> Закриті завдання
+                    {% else %}
+                        <i class="bi bi-list-ul"></i> Всі завдання
+                    {% endif %}
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if tasks %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th style="width: 40px;">
+                                    <input type="checkbox" id="selectAll" class="form-check-input">
+                                </th>
+                                <th style="width: 120px;">Виконано</th>
+                                <th>Назва</th>
+                                <th style="width: 150px;">Термін</th>
+                                <th style="width: 150px;">Список</th>
+                                <th style="width: 100px;">Дії</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tasksTableBody">
+                            {% for task in tasks %}
+                            <tr class="task-row {% if task.is_completed %}task-completed{% endif %} {% if task.is_overdue %}task-overdue{% endif %}" data-task-id="{{ task.id }}">
+                                <td>
+                                    <input type="checkbox" class="form-check-input task-select" value="{{ task.id }}" name="task_ids">
+                                </td>
+                                <td>
+                                    <div class="form-check form-check-lg">
+                                        <input type="checkbox" class="form-check-input task-complete" id="task-complete-{{ task.id }}" data-task-id="{{ task.id }}" {% if task.is_completed %}checked{% endif %}>
+                                        <label class="form-check-label" for="task-complete-{{ task.id }}" style="cursor: pointer; font-weight: 500;">
+                                            {% if task.is_completed %}
+                                            <span class="text-success">Виконано</span>
+                                            {% else %}
+                                            <span class="text-muted">Виконати</span>
+                                            {% endif %}
+                                        </label>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <form method="POST" action="{{ url_for('todo_task_toggle_important', task_id=task.id) }}" style="display:inline;">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                            <button type="submit" class="btn btn-sm btn-link p-0 task-important-btn" title="{% if task.is_important %}Прибрати з важливих{% else %}Додати до важливих{% endif %}">
+                                                {% if task.is_important %}
+                                                <i class="bi bi-star-fill text-warning" style="font-size: 1.2rem;"></i>
+                                                {% else %}
+                                                <i class="bi bi-star text-muted" style="font-size: 1.2rem;"></i>
+                                                {% endif %}
+                                            </button>
+                                        </form>
+                                        <div class="flex-grow-1">
+                                            <a href="#" class="task-title-link" data-task-id="{{ task.id }}">
+                                                {{ task.title }}
+                                            </a>
+                                            {% if task.notes %}
+                                            <br><small class="text-muted">{{ task.notes[:100] }}{% if task.notes|length > 100 %}...{% endif %}</small>
+                                            {% endif %}
+                                            {% if task.recurrence_type %}
+                                            <span class="badge bg-info ms-1" title="Повторюване завдання">
+                                                <i class="bi bi-arrow-repeat"></i>
+                                            </span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    {% if task.due_date %}
+                                        {% set due_date_str = task.due_date[:10] if task.due_date|length > 10 else task.due_date %}
+                                        <span class="{% if task.is_overdue %}text-danger fw-bold{% endif %}">
+                                            {{ due_date_str }}
+                                        </span>
+                                    {% else %}
+                                        <span class="text-muted">Без терміну</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if task.list_name %}
+                                    <span class="badge bg-secondary">{{ task.list_name }}</span>
+                                    {% else %}
+                                    <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-primary task-detail-btn" data-task-id="{{ task.id }}" title="Редагувати">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    {% if task.is_completed %}
+                                    <form method="POST" action="{{ url_for('todo_task_delete', task_id=task.id) }}" style="display:inline;" onsubmit="return confirm('Видалити завдання \"{{ task.title }}\"?');">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                        <button type="submit" class="btn btn-sm btn-outline-danger ms-1" title="Видалити">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted text-center py-4">Завдань поки немає</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Details Panel -->
+    <div class="todo-details" id="detailsPanel">
+        <div class="details-header">
+            <h5>Деталі завдання</h5>
+            <button class="btn btn-sm btn-close btn-close-white" id="closeDetails"></button>
+        </div>
+        <div class="details-content">
+            <form method="POST" action="#" id="taskDetailForm">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <input type="hidden" name="task_id" id="taskId">
+                
+                <div class="mb-3">
+                    <label class="form-label">Назва <span class="text-danger">*</span></label>
+                    <input type="text" name="title" id="taskTitle" class="form-control" required>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Нотатки</label>
+                    <textarea name="notes" id="taskNotes" class="form-control" rows="4"></textarea>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Термін</label>
+                    <input type="date" name="due_date" id="taskDueDate" class="form-control">
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Повторення</label>
+                    <select name="recurrence_type" id="taskRecurrence" class="form-select">
+                        <option value="">Без повторення</option>
+                        <option value="DAILY">Щодня</option>
+                        <option value="WEEKDAYS">Робочі дні (Пн-Пт)</option>
+                        <option value="WEEKLY">Щотижня</option>
+                        <option value="MONTHLY">Щомісяця</option>
+                        <option value="YEARLY">Щорічно</option>
+                    </select>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Список</label>
+                    <select name="list_name" id="taskListName" class="form-select">
+                        <option value="">Без списку</option>
+                        {% for list in all_lists %}
+                        <option value="{{ list }}">{{ list }}</option>
+                        {% endfor %}
+                    </select>
+                    <small class="text-muted">Або створіть новий список в sidebar</small>
+                </div>
+                
+                <div class="d-grid gap-2">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-save"></i> Зберегти
+                    </button>
+                    <button type="button" class="btn btn-danger" id="deleteTaskBtn">
+                        <i class="bi bi-trash"></i> Видалити
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/todo.js') }}"></script>
+{% endblock %}

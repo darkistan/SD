@@ -353,7 +353,9 @@ class TaskManager:
     
     def get_all_tasks(
         self,
-        filters: Optional[Dict[str, Any]] = None
+        filters: Optional[Dict[str, Any]] = None,
+        sort_by: Optional[str] = None,
+        sort_order: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         Отримання всіх завдань з фільтрацією
@@ -363,6 +365,10 @@ class TaskManager:
                 - is_completed: bool - фільтр за статусом виконання
                 - list_name: str - фільтр за списком
                 - exclude_list: str - виключити список
+                - is_important: bool - фільтр за важливістю
+                - recurrence_type: str - фільтр за типом повторення
+                - date_from: datetime - фільтр за датою від (для due_date)
+                - date_to: datetime - фільтр за датою до (для due_date)
                 
         Returns:
             Список завдань
@@ -383,12 +389,54 @@ class TaskManager:
                     
                     if 'is_important' in filters:
                         query = query.filter(Task.is_important == filters['is_important'])
+                    
+                    if 'recurrence_type' in filters:
+                        if filters['recurrence_type'] == 'none':
+                            query = query.filter(Task.recurrence_type.is_(None))
+                        elif filters['recurrence_type']:
+                            query = query.filter(Task.recurrence_type == filters['recurrence_type'])
+                    
+                    if 'date_from' in filters and filters['date_from']:
+                        query = query.filter(Task.due_date >= filters['date_from'])
+                    
+                    if 'date_to' in filters and filters['date_to']:
+                        # Додаємо кінець дня для date_to
+                        date_to_end = filters['date_to'].replace(hour=23, minute=59, second=59)
+                        query = query.filter(Task.due_date <= date_to_end)
                 
-                # Сортування: спочатку невиконані, потім за due_date
-                tasks = query.order_by(
-                    Task.is_completed.asc(),
-                    Task.due_date.asc().nullslast()
-                ).all()
+                # Сортування
+                if sort_by and sort_order:
+                    sort_column = None
+                    if sort_by == 'title':
+                        sort_column = Task.title
+                    elif sort_by == 'due_date':
+                        sort_column = Task.due_date
+                    elif sort_by == 'is_completed':
+                        sort_column = Task.is_completed
+                    elif sort_by == 'list_name':
+                        sort_column = Task.list_name
+                    elif sort_by == 'created_at':
+                        sort_column = Task.created_at
+                    elif sort_by == 'is_important':
+                        sort_column = Task.is_important
+                    
+                    if sort_column:
+                        if sort_order.lower() == 'asc':
+                            tasks = query.order_by(sort_column.asc().nullslast()).all()
+                        else:
+                            tasks = query.order_by(sort_column.desc().nullslast()).all()
+                    else:
+                        # Сортування за замовчуванням: спочатку невиконані, потім за due_date
+                        tasks = query.order_by(
+                            Task.is_completed.asc(),
+                            Task.due_date.asc().nullslast()
+                        ).all()
+                else:
+                    # Сортування за замовчуванням: спочатку невиконані, потім за due_date
+                    tasks = query.order_by(
+                        Task.is_completed.asc(),
+                        Task.due_date.asc().nullslast()
+                    ).all()
                 
                 return [self._task_to_dict(task) for task in tasks]
                 

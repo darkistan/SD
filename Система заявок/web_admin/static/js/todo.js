@@ -170,38 +170,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // Автоматичне сортування за due_date
-    function sortTasks() {
-        const tbody = document.getElementById('tasksTableBody');
-        if (!tbody) return;
-        
-        const rows = Array.from(tbody.querySelectorAll('tr'));
-        
-        rows.sort((a, b) => {
-            const aDueDate = a.querySelector('td:nth-child(4)')?.textContent?.trim();
-            const bDueDate = b.querySelector('td:nth-child(4)')?.textContent?.trim();
-            
-            // Спочатку невиконані
-            const aCompleted = a.querySelector('.task-complete')?.checked || false;
-            const bCompleted = b.querySelector('.task-complete')?.checked || false;
-            
-            if (aCompleted !== bCompleted) {
-                return aCompleted ? 1 : -1;
-            }
-            
-            // Потім за датою
-            if (!aDueDate && !bDueDate) return 0;
-            if (!aDueDate) return 1;
-            if (!bDueDate) return -1;
-            
-            return new Date(aDueDate) - new Date(bDueDate);
-        });
-        
-        rows.forEach(row => tbody.appendChild(row));
-    }
-    
-    // Сортуємо при завантаженні
-    sortTasks();
+    // Сортування тепер відбувається на сервері, клієнтське сортування видалено
     
     // Підтвердження видалення списку
     document.querySelectorAll('.delete-list-form').forEach(form => {
@@ -214,6 +183,23 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
+    
+    // Показ/приховування полів дат для кастомного періоду
+    const periodSelect = document.getElementById('periodSelect');
+    const dateFromGroup = document.getElementById('dateFromGroup');
+    const dateToGroup = document.getElementById('dateToGroup');
+    
+    if (periodSelect && dateFromGroup && dateToGroup) {
+        periodSelect.addEventListener('change', function() {
+            if (this.value === 'custom') {
+                dateFromGroup.style.display = 'block';
+                dateToGroup.style.display = 'block';
+            } else {
+                dateFromGroup.style.display = 'none';
+                dateToGroup.style.display = 'none';
+            }
+        });
+    }
     
     // Ініціалізація
     updateSelectedCount();

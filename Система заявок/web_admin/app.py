@@ -2874,17 +2874,92 @@ def todo():
     try:
         task_manager = get_task_manager()
         
-        # Отримуємо параметри фільтрації
+        # Отримуємо параметри фільтрації з URL
         filter_type = request.args.get('filter', 'all')  # all, today, overdue, list:<name>
         list_name = request.args.get('list', None)
         
-        # Визначаємо фільтри
-        show_completed = request.args.get('show_completed', 'false').lower() == 'true'
+        # Отримуємо параметри фільтрів (тільки для "Весь перелік")
+        selected_list = request.args.get('list_filter', '').strip()
+        selected_status = request.args.get('status_filter', '').strip()
+        selected_important = request.args.get('important_filter', '').strip()
+        selected_recurrence = request.args.get('recurrence_filter', '').strip()
+        period = request.args.get('period', '').strip()
+        date_from_str = request.args.get('date_from', '').strip()
+        date_to_str = request.args.get('date_to', '').strip()
         
-        if filter_type == 'completed':
+        # Отримуємо параметри сортування
+        sort_by = request.args.get('sort_by', 'due_date')
+        sort_order = request.args.get('sort_order', 'asc')
+        
+        # Обробка періодів для due_date
+        date_from = None
+        date_to = None
+        
+        if period:
+            today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            if period == 'today':
+                date_from = today
+                date_to = today.replace(hour=23, minute=59, second=59)
+            elif period == 'tomorrow':
+                tomorrow = today + timedelta(days=1)
+                date_from = tomorrow
+                date_to = tomorrow.replace(hour=23, minute=59, second=59)
+            elif period == 'week':
+                date_from = today
+                date_to = (today + timedelta(days=7)).replace(hour=23, minute=59, second=59)
+            elif period == 'month':
+                date_from = today
+                date_to = (today + timedelta(days=30)).replace(hour=23, minute=59, second=59)
+            elif period == 'custom':
+                if date_from_str:
+                    try:
+                        date_from = datetime.strptime(date_from_str, '%Y-%m-%d')
+                    except ValueError:
+                        pass
+                if date_to_str:
+                    try:
+                        date_to = datetime.strptime(date_to_str, '%Y-%m-%d')
+                    except ValueError:
+                        pass
+        
+        # Визначаємо фільтри для "Весь перелік"
+        if filter_type == 'all':
+            filters = {}
+            
+            # Фільтр за списком
+            if selected_list:
+                filters['list_name'] = selected_list
+            
+            # Фільтр за статусом виконання
+            if selected_status == 'completed':
+                filters['is_completed'] = True
+            elif selected_status == 'not_completed':
+                filters['is_completed'] = False
+            
+            # Фільтр за важливістю
+            if selected_important == 'important':
+                filters['is_important'] = True
+            elif selected_important == 'not_important':
+                filters['is_important'] = False
+            
+            # Фільтр за повторюваністю
+            if selected_recurrence:
+                if selected_recurrence == 'none':
+                    filters['recurrence_type'] = 'none'
+                else:
+                    filters['recurrence_type'] = selected_recurrence
+            
+            # Фільтр за датами
+            if date_from:
+                filters['date_from'] = date_from
+            if date_to:
+                filters['date_to'] = date_to
+            
+            tasks = task_manager.get_all_tasks(filters, sort_by=sort_by, sort_order=sort_order)
+        elif filter_type == 'completed':
             # Показуємо тільки закриті задачі
             filters = {'is_completed': True}
-            tasks = task_manager.get_all_tasks(filters)
+            tasks = task_manager.get_all_tasks(filters, sort_by=sort_by, sort_order=sort_order)
         elif filter_type == 'today':
             tasks = task_manager.get_tasks_for_today()
         elif filter_type == 'overdue':
@@ -2892,12 +2967,9 @@ def todo():
         elif filter_type == 'list' and list_name:
             tasks = task_manager.get_tasks_by_list(list_name)
         else:
-            # Показуємо невиконані, або всі якщо show_completed=True
-            if show_completed:
-                tasks = task_manager.get_all_tasks({})  # Всі задачі
-            else:
-                filters = {'is_completed': False}
-                tasks = task_manager.get_all_tasks(filters)
+            # Показуємо невиконані
+            filters = {'is_completed': False}
+            tasks = task_manager.get_all_tasks(filters, sort_by=sort_by, sort_order=sort_order)
         
         # Отримуємо всі списки
         all_lists = task_manager.get_all_lists()
@@ -2927,7 +2999,16 @@ def todo():
                              today_tasks=today_tasks,
                              filter_type=filter_type,
                              current_list=list_name,
-                             today_str=today_str)
+                             today_str=today_str,
+                             selected_list=selected_list,
+                             selected_status=selected_status,
+                             selected_important=selected_important,
+                             selected_recurrence=selected_recurrence,
+                             selected_period=period,
+                             selected_date_from=date_from_str,
+                             selected_date_to=date_to_str,
+                             sort_by=sort_by,
+                             sort_order=sort_order)
     except Exception as e:
         logger.log_error(f"Помилка завантаження сторінки TO DO: {e}")
         flash(f'Помилка завантаження сторінки: {e}', 'danger')

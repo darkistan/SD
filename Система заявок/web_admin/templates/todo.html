@@ -186,6 +186,88 @@
                     {% endif %}
                 </h5>
             </div>
+            
+            <!-- Фільтри (тільки для "Весь перелік") -->
+            {% if filter_type == 'all' %}
+            <div class="card-body border-bottom">
+                <form method="GET" action="{{ url_for('todo') }}" class="row g-3">
+                    <input type="hidden" name="filter" value="all">
+                    <input type="hidden" name="sort_by" value="{{ sort_by }}">
+                    <input type="hidden" name="sort_order" value="{{ sort_order }}">
+                    
+                    <div class="col-md-2">
+                        <label class="form-label">Список</label>
+                        <select name="list_filter" class="form-select">
+                            <option value="">Всі списки</option>
+                            {% for list in all_lists %}
+                            <option value="{{ list }}" {% if selected_list == list %}selected{% endif %}>{{ list }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="col-md-2">
+                        <label class="form-label">Статус</label>
+                        <select name="status_filter" class="form-select">
+                            <option value="">Всі</option>
+                            <option value="not_completed" {% if selected_status == 'not_completed' %}selected{% endif %}>Не виконані</option>
+                            <option value="completed" {% if selected_status == 'completed' %}selected{% endif %}>Виконані</option>
+                        </select>
+                    </div>
+                    
+                    <div class="col-md-2">
+                        <label class="form-label">Важливість</label>
+                        <select name="important_filter" class="form-select">
+                            <option value="">Всі</option>
+                            <option value="important" {% if selected_important == 'important' %}selected{% endif %}>Важливі</option>
+                            <option value="not_important" {% if selected_important == 'not_important' %}selected{% endif %}>Не важливі</option>
+                        </select>
+                    </div>
+                    
+                    <div class="col-md-2">
+                        <label class="form-label">Повторення</label>
+                        <select name="recurrence_filter" class="form-select">
+                            <option value="">Всі</option>
+                            <option value="none" {% if selected_recurrence == 'none' %}selected{% endif %}>Без повторення</option>
+                            <option value="DAILY" {% if selected_recurrence == 'DAILY' %}selected{% endif %}>Щодня</option>
+                            <option value="WEEKDAYS" {% if selected_recurrence == 'WEEKDAYS' %}selected{% endif %}>Будні дні</option>
+                            <option value="WEEKLY" {% if selected_recurrence == 'WEEKLY' %}selected{% endif %}>Щотижня</option>
+                            <option value="MONTHLY" {% if selected_recurrence == 'MONTHLY' %}selected{% endif %}>Щомісяця</option>
+                            <option value="YEARLY" {% if selected_recurrence == 'YEARLY' %}selected{% endif %}>Щороку</option>
+                        </select>
+                    </div>
+                    
+                    <div class="col-md-2">
+                        <label class="form-label">Період</label>
+                        <select name="period" id="periodSelect" class="form-select">
+                            <option value="">Весь період</option>
+                            <option value="today" {% if selected_period == 'today' %}selected{% endif %}>Сьогодні</option>
+                            <option value="tomorrow" {% if selected_period == 'tomorrow' %}selected{% endif %}>Завтра</option>
+                            <option value="week" {% if selected_period == 'week' %}selected{% endif %}>Наступні 7 днів</option>
+                            <option value="month" {% if selected_period == 'month' %}selected{% endif %}>Наступні 30 днів</option>
+                            <option value="custom" {% if selected_period == 'custom' %}selected{% endif %}>Кастомний період</option>
+                        </select>
+                    </div>
+                    
+                    <div class="col-md-2" id="dateFromGroup" style="display: {% if selected_period == 'custom' %}block{% else %}none{% endif %};">
+                        <label class="form-label">Дата від</label>
+                        <input type="date" name="date_from" id="dateFrom" class="form-control" value="{{ selected_date_from }}">
+                    </div>
+                    
+                    <div class="col-md-2" id="dateToGroup" style="display: {% if selected_period == 'custom' %}block{% else %}none{% endif %};">
+                        <label class="form-label">Дата до</label>
+                        <input type="date" name="date_to" id="dateTo" class="form-control" value="{{ selected_date_to }}">
+                    </div>
+                    
+                    <div class="col-md-2">
+                        <label class="form-label">&nbsp;</label>
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="bi bi-search"></i> Фільтрувати
+                        </button>
+                    </div>
+                </form>
+            </div>
+            {% endif %}
+            
             <div class="card-body">
                 {% if tasks %}
                 <div class="table-responsive">
@@ -195,10 +277,74 @@
                                 <th style="width: 40px;">
                                     <input type="checkbox" id="selectAll" class="form-check-input">
                                 </th>
-                                <th style="width: 120px;">Виконано</th>
-                                <th>Назва</th>
-                                <th style="width: 150px;">Термін</th>
-                                <th style="width: 150px;">Список</th>
+                                <th style="width: 120px;">
+                                    {% if filter_type == 'all' %}
+                                    {% if sort_by == 'is_completed' %}
+                                        {% set next_order_status = 'asc' if sort_order == 'desc' else 'desc' %}
+                                    {% else %}
+                                        {% set next_order_status = 'asc' %}
+                                    {% endif %}
+                                    <a href="{{ url_for('todo', filter='all', sort_by='is_completed', sort_order=next_order_status, list_filter=selected_list, status_filter=selected_status, important_filter=selected_important, recurrence_filter=selected_recurrence, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-reset">
+                                        Виконано
+                                        {% if sort_by == 'is_completed' %}
+                                            {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
+                                        {% endif %}
+                                    </a>
+                                    {% else %}
+                                    Виконано
+                                    {% endif %}
+                                </th>
+                                <th>
+                                    {% if filter_type == 'all' %}
+                                    {% if sort_by == 'title' %}
+                                        {% set next_order_title = 'asc' if sort_order == 'desc' else 'desc' %}
+                                    {% else %}
+                                        {% set next_order_title = 'asc' %}
+                                    {% endif %}
+                                    <a href="{{ url_for('todo', filter='all', sort_by='title', sort_order=next_order_title, list_filter=selected_list, status_filter=selected_status, important_filter=selected_important, recurrence_filter=selected_recurrence, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-reset">
+                                        Назва
+                                        {% if sort_by == 'title' %}
+                                            {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
+                                        {% endif %}
+                                    </a>
+                                    {% else %}
+                                    Назва
+                                    {% endif %}
+                                </th>
+                                <th style="width: 150px;">
+                                    {% if filter_type == 'all' %}
+                                    {% if sort_by == 'due_date' %}
+                                        {% set next_order_date = 'asc' if sort_order == 'desc' else 'desc' %}
+                                    {% else %}
+                                        {% set next_order_date = 'asc' %}
+                                    {% endif %}
+                                    <a href="{{ url_for('todo', filter='all', sort_by='due_date', sort_order=next_order_date, list_filter=selected_list, status_filter=selected_status, important_filter=selected_important, recurrence_filter=selected_recurrence, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-reset">
+                                        Термін
+                                        {% if sort_by == 'due_date' %}
+                                            {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
+                                        {% endif %}
+                                    </a>
+                                    {% else %}
+                                    Термін
+                                    {% endif %}
+                                </th>
+                                <th style="width: 150px;">
+                                    {% if filter_type == 'all' %}
+                                    {% if sort_by == 'list_name' %}
+                                        {% set next_order_list = 'asc' if sort_order == 'desc' else 'desc' %}
+                                    {% else %}
+                                        {% set next_order_list = 'asc' %}
+                                    {% endif %}
+                                    <a href="{{ url_for('todo', filter='all', sort_by='list_name', sort_order=next_order_list, list_filter=selected_list, status_filter=selected_status, important_filter=selected_important, recurrence_filter=selected_recurrence, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-reset">
+                                        Список
+                                        {% if sort_by == 'list_name' %}
+                                            {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
+                                        {% endif %}
+                                    </a>
+                                    {% else %}
+                                    Список
+                                    {% endif %}
+                                </th>
                                 <th style="width: 100px;">Дії</th>
                             </tr>
                         </thead>

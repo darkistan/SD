@@ -363,10 +363,24 @@ def dashboard():
         
         # Отримуємо статистику по картриджам
         cartridge_stats = ticket_manager.get_cartridge_statistics_by_company(date_from, date_to)
+        
+        # Отримуємо статистику TODO
+        task_manager = get_task_manager()
+        today_tasks = task_manager.get_tasks_for_today()
+        overdue_tasks = task_manager.get_overdue_tasks()
+        important_tasks = task_manager.get_all_tasks({'is_important': True, 'is_completed': False})
+        
+        todo_stats = {
+            'today_count': len(today_tasks),
+            'overdue_count': len(overdue_tasks),
+            'important_count': len(important_tasks),
+            'today_tasks': today_tasks[:10]  # Обмежуємо до 10 для відображення
+        }
     else:
         # Для користувача - тільки свої
         tickets = ticket_manager.get_user_tickets(current_user.user_id, limit=10)
         cartridge_stats = {}
+        todo_stats = None
     
     # Перевіряємо активні чати для кожного тікета (тільки для користувачів з Telegram)
     chat_manager = get_chat_manager()
@@ -380,6 +394,7 @@ def dashboard():
     return render_template('dashboard.html', 
                          tickets=tickets,
                          cartridge_stats=cartridge_stats,
+                         todo_stats=todo_stats,
                          date_from=date_from.strftime('%Y-%m-%d'),
                          date_to=date_to.strftime('%Y-%m-%d'))
 

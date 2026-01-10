@@ -11,6 +11,131 @@
     </div>
 </div>
 
+{% if current_user.is_admin and todo_stats %}
+<!-- TODO Статистика -->
+<div class="row mb-3">
+    <!-- Картки статистики -->
+    <div class="col-12 col-md-4 mb-2 mb-md-0">
+        <a href="{{ url_for('todo', filter='today') }}" class="text-decoration-none">
+            <div class="card border-info todo-stat-card">
+                <div class="card-body p-2">
+                    <div class="d-flex align-items-center">
+                        <i class="bi bi-calendar-day text-info" style="font-size: 1.5rem; width: 30px;"></i>
+                        <div class="ms-2 flex-grow-1">
+                            <h5 class="text-info mb-0">{{ todo_stats.today_count }}</h5>
+                            <small class="text-muted">На сьогодні</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-12 col-md-4 mb-2 mb-md-0">
+        <a href="{{ url_for('todo', filter='overdue') }}" class="text-decoration-none">
+            <div class="card border-danger todo-stat-card">
+                <div class="card-body p-2">
+                    <div class="d-flex align-items-center">
+                        <i class="bi bi-exclamation-triangle text-danger" style="font-size: 1.5rem; width: 30px;"></i>
+                        <div class="ms-2 flex-grow-1">
+                            <h5 class="text-danger mb-0">{{ todo_stats.overdue_count }}</h5>
+                            <small class="text-muted">Протерміновані</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-12 col-md-4 mb-2 mb-md-0">
+        <a href="{{ url_for('todo', filter='list', list='Важливо') }}" class="text-decoration-none">
+            <div class="card border-warning todo-stat-card">
+                <div class="card-body p-2">
+                    <div class="d-flex align-items-center">
+                        <i class="bi bi-star text-warning" style="font-size: 1.5rem; width: 30px;"></i>
+                        <div class="ms-2 flex-grow-1">
+                            <h5 class="text-warning mb-0">{{ todo_stats.important_count }}</h5>
+                            <small class="text-muted">Важливі</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </a>
+    </div>
+</div>
+
+<!-- Список задач на сьогодні -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-list-check text-info"></i> Задачі на сьогодні
+                </h5>
+                <a href="{{ url_for('todo') }}" class="btn btn-sm btn-info">
+                    <i class="bi bi-arrow-right"></i> Переглянути всі
+                </a>
+            </div>
+            <div class="card-body">
+                {% if todo_stats.today_tasks %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th style="width: 40px;"></th>
+                                <th>Назва</th>
+                                <th>Список</th>
+                                <th>Термін</th>
+                                <th style="width: 100px;">Дії</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for task in todo_stats.today_tasks %}
+                            <tr {% if task.is_important %}class="table-warning"{% endif %}>
+                                <td class="text-center">
+                                    {% if task.is_important %}
+                                    <i class="bi bi-star-fill text-warning" title="Важлива задача"></i>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <strong>{{ task.title }}</strong>
+                                    {% if task.notes %}
+                                    <br><small class="text-muted">{{ task.notes[:50] }}{% if task.notes|length > 50 %}...{% endif %}</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if task.list_name %}
+                                    <span class="badge bg-secondary">{{ task.list_name }}</span>
+                                    {% else %}
+                                    <span class="text-muted">—</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if task.due_date %}
+                                    {{ task.due_date[:10] }}
+                                    {% else %}
+                                    <span class="text-muted">—</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <a href="{{ url_for('todo') }}?filter=today" class="btn btn-sm btn-outline-primary" title="Переглянути на сторінці TODO">
+                                        <i class="bi bi-arrow-right"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted mb-0">
+                    <i class="bi bi-check-circle"></i> На сьогодні немає запланованих задач.
+                </p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <div class="row">
     <div class="col-12">
         <div class="card">
@@ -166,6 +291,21 @@
 
 .ticket-closed .btn {
     opacity: 0.6;
+}
+
+/* Стилі для TODO статистики */
+.todo-stat-card {
+    transition: transform 0.2s, box-shadow 0.2s;
+    cursor: pointer;
+}
+
+.todo-stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.table-warning {
+    background-color: rgba(255, 193, 7, 0.1) !important;
 }
 </style>
 {% endblock %}

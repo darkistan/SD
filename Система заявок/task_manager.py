@@ -281,7 +281,9 @@ class TaskManager:
         new_due_date = None
         
         if task.recurrence_type == 'DAILY':
-            new_due_date = datetime.combine(today + timedelta(days=1), datetime.min.time())
+            # Використовуємо due_date задачі, якщо воно є, інакше сьогодні
+            base_date = task.due_date.date() if task.due_date else today
+            new_due_date = datetime.combine(base_date + timedelta(days=1), datetime.min.time())
         
         elif task.recurrence_type == 'WEEKDAYS':
             # Пропускаємо вихідні

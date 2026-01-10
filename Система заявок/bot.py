@@ -1042,7 +1042,7 @@ def main():
     
     # Ранкові сповіщення про завдання TO DO
     def send_morning_todo_notifications():
-        """Відправка ранкових сповіщень про завдання на сьогодні"""
+        """Відправка ранкових сповіщень про завдання на сьогодні користувачам з увімкненими оповіщеннями"""
         import time as time_module
         from notification_manager import get_notification_manager
         
@@ -1068,10 +1068,9 @@ def main():
                 task_manager = get_task_manager()
                 notification_manager = get_notification_manager()
                 
-                # Отримуємо всіх адмінів з увімкненими оповіщеннями
+                # Отримуємо всіх користувачів з увімкненими оповіщеннями про задачі
                 with get_session() as session:
-                    admins = session.query(User).filter(
-                        User.role == 'admin',
+                    users = session.query(User).filter(
                         User.notifications_enabled == True,
                         User.user_id > 0  # Тільки Telegram користувачі
                     ).all()
@@ -1080,15 +1079,15 @@ def main():
                     today_tasks = task_manager.get_tasks_for_today()
                     
                     if today_tasks:
-                        # Відправляємо кожному адміну
-                        for admin in admins:
+                        # Відправляємо кожному користувачу з увімкненими оповіщеннями
+                        for user in users:
                             try:
                                 notification_manager.send_todo_tasks_notification(
-                                    user_id=admin.user_id,
+                                    user_id=user.user_id,
                                     tasks=today_tasks
                                 )
                             except Exception as e:
-                                logger.log_error(f"Помилка відправки ранкового звіту адміну {admin.user_id}: {e}")
+                                logger.log_error(f"Помилка відправки ранкового звіту користувачу {user.user_id}: {e}")
                 
             except Exception as e:
                 logger.log_error(f"Помилка в ранкових сповіщеннях про завдання: {e}")

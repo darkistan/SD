@@ -59,6 +59,41 @@
     margin-top: 1rem;
 }
 
+/* Collapse functionality */
+.collapse-toggle {
+    cursor: pointer;
+    transition: transform 0.3s ease;
+    border: none;
+    background: none;
+    color: var(--bs-light);
+    font-size: 0.875rem;
+}
+
+.collapse-toggle:hover {
+    color: var(--bs-primary);
+}
+
+.collapse-icon {
+    transition: transform 0.3s ease;
+    display: inline-block;
+}
+
+.collapse-toggle[aria-expanded="false"] .collapse-icon {
+    transform: rotate(-90deg);
+}
+
+.collapse-toggle[aria-expanded="true"] .collapse-icon {
+    transform: rotate(0deg);
+}
+
+.sidebar-content.collapse:not(.show) {
+    display: none;
+}
+
+#sidebar-custom-lists.collapse:not(.show) {
+    display: none;
+}
+
 /* Main Content */
 .todo-main {
     min-width: 0; /* Для правильного overflow */

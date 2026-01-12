@@ -201,6 +201,33 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
+    // Згортання/розгортання секцій
+    document.querySelectorAll('.collapse-toggle').forEach(button => {
+        const targetId = button.dataset.target;
+        const target = document.getElementById(targetId);
+        if (!target) return;
+        
+        // Встановлюємо початковий стан (згорнуто за замовчуванням)
+        if (!target.classList.contains('show')) {
+            button.setAttribute('aria-expanded', 'false');
+        }
+        
+        button.addEventListener('click', function(e) {
+            e.preventDefault();
+            const isExpanded = this.getAttribute('aria-expanded') === 'true';
+            
+            if (isExpanded) {
+                // Згортаємо
+                target.classList.remove('show');
+                this.setAttribute('aria-expanded', 'false');
+            } else {
+                // Розгортаємо
+                target.classList.add('show');
+                this.setAttribute('aria-expanded', 'true');
+            }
+        });
+    });
+    
     // Ініціалізація
     updateSelectedCount();
 });

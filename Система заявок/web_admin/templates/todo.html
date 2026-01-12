@@ -9,9 +9,14 @@
     <!-- Sidebar -->
     <div class="todo-sidebar">
         <div class="sidebar-header">
-            <h5><i class="bi bi-list-check"></i> Списки</h5>
+            <h5 class="d-flex justify-content-between align-items-center mb-0">
+                <span><i class="bi bi-list-check"></i> Списки</span>
+                <button type="button" class="btn btn-sm btn-link text-light p-0 collapse-toggle" data-target="sidebar-lists-main" aria-label="Згорнути/розгорнути">
+                    <i class="bi bi-chevron-down collapse-icon"></i>
+                </button>
+            </h5>
         </div>
-        <div class="sidebar-content">
+        <div class="sidebar-content collapse" id="sidebar-lists-main">
             <ul class="list-group list-group-flush">
                 <li class="list-group-item">
                     <a href="{{ url_for('todo', filter='all') }}" class="sidebar-link {% if filter_type == 'all' %}active{% endif %}">
@@ -45,44 +50,49 @@
             <div class="sidebar-lists">
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <h6 class="mb-0">Користувацькі списки</h6>
+                    <button type="button" class="btn btn-sm btn-link text-light p-0 collapse-toggle" data-target="sidebar-custom-lists" aria-label="Згорнути/розгорнути">
+                        <i class="bi bi-chevron-down collapse-icon"></i>
+                    </button>
                 </div>
                 
-                <!-- Форма створення списку -->
-                <form method="POST" action="{{ url_for('todo_list_create') }}" class="mb-3">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                    <div class="input-group input-group-sm">
-                        <input type="text" name="list_name" class="form-control" placeholder="Новий список" required>
-                        <button type="submit" class="btn btn-primary" title="Створити список">
-                            <i class="bi bi-plus"></i>
-                        </button>
-                    </div>
-                </form>
-                
-                {% if all_lists %}
-                <ul class="list-group list-group-flush">
-                    {% for list in all_lists %}
-                    {% if list != 'Важливо' %}
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        <a href="{{ url_for('todo', filter='list', list=list) }}" class="sidebar-link {% if filter_type == 'list' and current_list == list %}active{% endif %} flex-grow-1">
-                            <i class="bi bi-folder"></i> {{ list }}
-                        </a>
-                        <form method="POST" action="{{ url_for('todo_list_delete') }}" style="display:inline;" class="delete-list-form" data-list-name="{{ list }}">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                            <input type="hidden" name="list_name" value="{{ list }}">
-                            <button type="submit" class="btn btn-sm btn-link text-danger p-0 ms-2 delete-list-btn" title="Видалити список">
-                                <i class="bi bi-trash"></i>
+                <div class="collapse" id="sidebar-custom-lists">
+                    <!-- Форма створення списку -->
+                    <form method="POST" action="{{ url_for('todo_list_create') }}" class="mb-3">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="list_name" class="form-control" placeholder="Новий список" required>
+                            <button type="submit" class="btn btn-primary" title="Створити список">
+                                <i class="bi bi-plus"></i>
                             </button>
-                        </form>
-                    </li>
+                        </div>
+                    </form>
+                    
+                    {% if all_lists %}
+                    <ul class="list-group list-group-flush">
+                        {% for list in all_lists %}
+                        {% if list != 'Важливо' %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <a href="{{ url_for('todo', filter='list', list=list) }}" class="sidebar-link {% if filter_type == 'list' and current_list == list %}active{% endif %} flex-grow-1">
+                                <i class="bi bi-folder"></i> {{ list }}
+                            </a>
+                            <form method="POST" action="{{ url_for('todo_list_delete') }}" style="display:inline;" class="delete-list-form" data-list-name="{{ list }}">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                <input type="hidden" name="list_name" value="{{ list }}">
+                                <button type="submit" class="btn btn-sm btn-link text-danger p-0 ms-2 delete-list-btn" title="Видалити список">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </li>
+                        {% endif %}
+                        {% endfor %}
+                    </ul>
+                    {% if not all_lists or (all_lists|length == 1 and 'Важливо' in all_lists) %}
+                    <p class="text-muted small">Списків поки немає</p>
                     {% endif %}
-                    {% endfor %}
-                </ul>
-                {% if not all_lists or (all_lists|length == 1 and 'Важливо' in all_lists) %}
-                <p class="text-muted small">Списків поки немає</p>
-                {% endif %}
-                {% else %}
-                <p class="text-muted small">Списків поки немає</p>
-                {% endif %}
+                    {% else %}
+                    <p class="text-muted small">Списків поки немає</p>
+                    {% endif %}
+                </div>
             </div>
         </div>
     </div>

@@ -1,0 +1,220 @@
+/* Стилі для таймерів */
+
+.timer-card {
+    transition: transform 0.2s, box-shadow 0.2s;
+    border: 1px solid #dee2e6 !important;
+    padding: 0.375rem !important;
+    margin-bottom: 0.375rem !important;
+    display: inline-block;
+    width: fit-content;
+    min-width: 200px;
+    max-width: 100%;
+}
+
+.timer-card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.timer-card.timer-urgent {
+    border-color: #dc3545 !important;
+    background-color: rgba(220, 53, 69, 0.05);
+}
+
+.timer-display {
+    font-size: 0.75rem;
+    font-weight: 500;
+    margin-bottom: 0.125rem !important;
+    line-height: 1.2;
+}
+
+.timer-display .timer-days,
+.timer-display .timer-hours {
+    color: #0d6efd;
+    font-weight: 600;
+    font-size: 0.875rem;
+}
+
+.timer-card.timer-urgent .timer-display .timer-days,
+.timer-card.timer-urgent .timer-display .timer-hours {
+    color: #dc3545;
+}
+
+.timer-label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 1.2;
+    /* Колір, який видно на світлому і темному фоні - темно-сірий для світлого, світло-сірий для темного */
+    color: #495057;
+}
+
+/* Для темної теми - світліший колір */
+[data-bs-theme="dark"] .timer-label,
+.dark .timer-label,
+body.dark .timer-label {
+    color: #e9ecef;
+}
+
+/* Для світлої теми - темніший колір */
+[data-bs-theme="light"] .timer-label,
+.light .timer-label,
+body.light .timer-label {
+    color: #495057;
+}
+
+/* Якщо тема не встановлена, використовуємо середній сірий, який видно на обох фонах */
+.timer-label {
+    color: #6c757d;
+}
+
+/* Додаткова підтримка через CSS змінні Bootstrap */
+.timer-label {
+    color: var(--bs-body-color, #6c757d);
+}
+
+/* Стилі для кнопок управління */
+.timer-pause-btn,
+.timer-resume-btn,
+.timer-reset-btn,
+.timer-delete-btn {
+    transition: all 0.2s;
+}
+
+.timer-pause-btn:hover {
+    background-color: #ffc107;
+    border-color: #ffc107;
+    color: #000;
+}
+
+.timer-resume-btn:hover {
+    background-color: #198754;
+    border-color: #198754;
+    color: #fff;
+}
+
+.timer-reset-btn:hover {
+    background-color: #6c757d;
+    border-color: #6c757d;
+    color: #fff;
+}
+
+.timer-delete-btn:hover {
+    background-color: #dc3545;
+    border-color: #dc3545;
+    color: #fff;
+}
+
+/* Анімація для таймерів на паузі */
+.timer-card[data-is-paused="true"] {
+    opacity: 0.8;
+}
+
+.timer-card[data-is-paused="true"] .timer-display {
+    color: #6c757d;
+}
+
+/* Стилі для карток на дашборді */
+#dashboardTimers {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+#dashboardTimers .timer-card {
+    min-height: auto;
+    padding: 0.375rem !important;
+    width: fit-content;
+    min-width: 200px;
+    max-width: 100%;
+    flex: 0 0 auto;
+}
+
+#dashboardTimers .timer-card .card-body {
+    padding: 0.375rem !important;
+}
+
+#dashboardTimers .timer-display {
+    font-size: 0.75rem;
+    margin-bottom: 0.25rem !important;
+}
+
+#dashboardTimers .timer-display .timer-days,
+#dashboardTimers .timer-display .timer-hours {
+    font-size: 0.875rem;
+}
+
+#dashboardTimers .timer-label {
+    font-size: 0.75rem;
+    margin-bottom: 0.125rem !important;
+}
+
+/* Стилі для списку таймерів на сторінці TO DO */
+#timersList {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+#timersList .timer-card {
+    background-color: var(--bs-body-bg);
+    padding: 0.5rem !important;
+    width: fit-content;
+    min-width: 200px;
+    max-width: 100%;
+}
+
+#timersList .timer-card:hover {
+    background-color: var(--bs-body-bg);
+}
+
+#timersList .timer-label {
+    font-size: 0.75rem;
+    margin-bottom: 0.125rem !important;
+}
+
+#timersList .timer-display {
+    font-size: 0.75rem;
+    margin-bottom: 0.125rem !important;
+}
+
+/* Компактні кнопки */
+.timer-card .btn-group-sm .btn {
+    padding: 0.125rem 0.375rem;
+    font-size: 0.65rem;
+    line-height: 1.2;
+}
+
+.timer-card .btn-group-sm .btn i {
+    font-size: 0.75rem;
+}
+
+/* Компактні іконки типів таймерів */
+.timer-card .bi-arrow-up-circle,
+.timer-card .bi-arrow-down-circle {
+    font-size: 0.875rem !important;
+}
+
+/* Адаптивність */
+@media (max-width: 768px) {
+    .timer-display {
+        font-size: 0.85rem;
+    }
+    
+    .timer-display .timer-days,
+    .timer-display .timer-hours {
+        font-size: 0.95rem;
+    }
+    
+    #dashboardTimers .timer-display {
+        font-size: 0.95rem;
+    }
+    
+    #dashboardTimers .timer-display .timer-days,
+    #dashboardTimers .timer-display .timer-hours {
+        font-size: 1.1rem;
+    }
+    
+    .timer-label {
+        font-size: 0.8rem;
+    }
+}

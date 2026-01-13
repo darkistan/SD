@@ -386,3 +386,26 @@ class Task(Base):
     def __repr__(self):
         return f"<Task(id={self.id}, title='{self.title[:50]}...', is_completed={self.is_completed}, due_date={self.due_date})>"
 
+
+class Timer(Base):
+    """Модель таймера"""
+    __tablename__ = 'timers'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    label = Column(String(200), nullable=True)  # Підпис таймера
+    timer_type = Column(String(20), nullable=False, index=True)  # 'FORWARD' (прямий) або 'BACKWARD' (зворотний)
+    target_datetime = Column(DateTime, nullable=True, index=True)  # Цільова дата/час для зворотного відліку або дата початку для прямого
+    start_datetime = Column(DateTime, nullable=False, index=True)  # Дата/час початку таймера
+    is_paused = Column(Boolean, default=False, index=True)  # Чи зупинений таймер
+    paused_duration = Column(Integer, default=0)  # Загальна тривалість пауз в секундах
+    last_pause_start = Column(DateTime, nullable=True)  # Час початку поточної паузи
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_by_user_id = Column(Integer, ForeignKey('users.user_id'), nullable=True)
+    
+    # Relationships
+    creator = relationship('User', foreign_keys=[created_by_user_id])
+    
+    def __repr__(self):
+        return f"<Timer(id={self.id}, label='{self.label}', timer_type='{self.timer_type}', is_paused={self.is_paused})>"
+

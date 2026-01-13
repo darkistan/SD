@@ -144,6 +144,100 @@
             </div>
         </div>
         
+        <!-- Timers Section -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-stopwatch"></i> Таймери</h5>
+                <button type="button" class="btn btn-sm btn-link p-0 collapse-toggle" data-target="timers-section-content" aria-label="Згорнути/розгорнути">
+                    <i class="bi bi-chevron-down collapse-icon"></i>
+                </button>
+            </div>
+            <div class="collapse" id="timers-section-content">
+            <div class="card-body">
+                <!-- Форма створення таймера -->
+                <form method="POST" action="{{ url_for('timer_create') }}" id="timerCreateForm" class="mb-4">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <div class="row g-2">
+                        <div class="col-md-3">
+                            <input type="text" name="label" class="form-control form-control-sm" placeholder="Підпис таймера">
+                        </div>
+                        <div class="col-md-3">
+                            <select name="timer_type" id="timerTypeSelect" class="form-select form-select-sm" required>
+                                <option value="FORWARD">Прямий відлік</option>
+                                <option value="BACKWARD">Зворотний відлік</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4" id="startDateTimeGroup" style="display: none;">
+                            <input type="datetime-local" name="start_datetime" id="startDateTime" class="form-control form-control-sm" title="Дата та час початку відліку">
+                        </div>
+                        <div class="col-md-4" id="targetDateTimeGroup" style="display: none;">
+                            <input type="datetime-local" name="target_datetime" id="targetDateTime" class="form-control form-control-sm" title="Цільова дата та час">
+                        </div>
+                        <div class="col-md-2">
+                            <button type="submit" class="btn btn-primary btn-sm w-100">
+                                <i class="bi bi-plus"></i> Створити
+                            </button>
+                        </div>
+                    </div>
+                </form>
+                
+                <!-- Список таймерів -->
+                {% if timers %}
+                <div id="timersList">
+                    {% for timer in timers %}
+                    <div class="timer-card mb-2 border rounded" data-timer-id="{{ timer.id }}" 
+                         data-timer-type="{{ timer.timer_type }}"
+                         data-start-datetime="{{ timer.start_datetime }}"
+                         data-target-datetime="{{ timer.target_datetime or '' }}"
+                         data-is-paused="{{ 'true' if timer.is_paused else 'false' }}"
+                         data-paused-duration="{{ timer.paused_duration }}"
+                         data-last-pause-start="{{ timer.last_pause_start or '' }}">
+                        <div class="d-flex justify-content-between align-items-start gap-2">
+                            <div>
+                                <div class="d-flex align-items-center mb-1 flex-wrap">
+                                    {% if timer.timer_type == 'FORWARD' %}
+                                    <i class="bi bi-arrow-up-circle text-success me-1"></i>
+                                    {% else %}
+                                    <i class="bi bi-arrow-down-circle text-danger me-1"></i>
+                                    {% endif %}
+                                    <span class="timer-label">{{ timer.label or 'Без підпису' }}</span>
+                                    {% if timer.is_paused %}
+                                    <span class="badge bg-warning ms-1" style="font-size: 0.6rem; padding: 0.125rem 0.25rem;">Пауза</span>
+                                    {% endif %}
+                                </div>
+                                <div class="timer-display">
+                                    <span class="timer-days">0</span> днів 
+                                    <span class="timer-hours">0</span> годин
+                                </div>
+                            </div>
+                            <div class="btn-group btn-group-sm flex-shrink-0">
+                                {% if timer.is_paused %}
+                                <button class="btn btn-outline-success timer-resume-btn" data-timer-id="{{ timer.id }}" title="Продовжити">
+                                    <i class="bi bi-play-fill"></i>
+                                </button>
+                                {% else %}
+                                <button class="btn btn-outline-warning timer-pause-btn" data-timer-id="{{ timer.id }}" title="Зупинити">
+                                    <i class="bi bi-pause-fill"></i>
+                                </button>
+                                {% endif %}
+                                <button class="btn btn-outline-secondary timer-reset-btn" data-timer-id="{{ timer.id }}" title="Скинути">
+                                    <i class="bi bi-arrow-counterclockwise"></i>
+                                </button>
+                                <button class="btn btn-outline-danger timer-delete-btn" data-timer-id="{{ timer.id }}" title="Видалити">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted mb-0">Таймерів поки немає</p>
+                {% endif %}
+            </div>
+            </div>
+        </div>
+        
         <!-- Bulk Actions Panel -->
         <div id="bulkActionsPanel" class="card mb-4" style="display: none;">
             <div class="card-body">
@@ -511,4 +605,54 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/todo.js') }}"></script>
+<script src="{{ url_for('static', filename='js/timers.js') }}"></script>
+<script>
+// Показ/приховування полів дати/часу залежно від типу таймера
+document.addEventListener('DOMContentLoaded', function() {
+    const timerTypeSelect = document.getElementById('timerTypeSelect');
+    const startDateTimeGroup = document.getElementById('startDateTimeGroup');
+    const startDateTime = document.getElementById('startDateTime');
+    const targetDateTimeGroup = document.getElementById('targetDateTimeGroup');
+    const targetDateTime = document.getElementById('targetDateTime');
+    
+    if (timerTypeSelect) {
+        function updateDateTimeFieldsVisibility() {
+            if (timerTypeSelect.value === 'FORWARD') {
+                // Прямий таймер: показуємо поле початку відліку
+                if (startDateTimeGroup) {
+                    startDateTimeGroup.style.display = 'block';
+                }
+                if (startDateTime) {
+                    startDateTime.required = false; // Не обов'язкове, за замовчуванням - поточний час
+                }
+                // Приховуємо поле цільової дати
+                if (targetDateTimeGroup) {
+                    targetDateTimeGroup.style.display = 'none';
+                }
+                if (targetDateTime) {
+                    targetDateTime.required = false;
+                }
+            } else if (timerTypeSelect.value === 'BACKWARD') {
+                // Зворотний таймер: показуємо поле цільової дати
+                if (targetDateTimeGroup) {
+                    targetDateTimeGroup.style.display = 'block';
+                }
+                if (targetDateTime) {
+                    targetDateTime.required = true;
+                }
+                // Приховуємо поле початку відліку
+                if (startDateTimeGroup) {
+                    startDateTimeGroup.style.display = 'none';
+                }
+                if (startDateTime) {
+                    startDateTime.required = false;
+                }
+            }
+        }
+        
+        timerTypeSelect.addEventListener('change', updateDateTimeFieldsVisibility);
+        updateDateTimeFieldsVisibility();
+    }
+});
+</script>
 {% endblock %}

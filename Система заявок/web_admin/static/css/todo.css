@@ -69,6 +69,11 @@
     font-size: 0.875rem;
 }
 
+/* Стиль для кнопок в основному контенті (не в sidebar) */
+.card-header .collapse-toggle {
+    color: var(--bs-body-color);
+}
+
 .collapse-toggle:hover {
     color: var(--bs-primary);
 }
@@ -91,6 +96,10 @@
 }
 
 #sidebar-custom-lists.collapse:not(.show) {
+    display: none;
+}
+
+#timers-section-content.collapse:not(.show) {
     display: none;
 }
 

@@ -104,6 +104,7 @@ class DatabaseManager:
             self.migrate_add_executor_to_ticket()
             self.migrate_create_user_printers_table()
             self.migrate_create_tasks_table()
+            self.migrate_create_timers_table()
             
             # Заповнюємо справочник статусів (якщо таблиця порожня)
             self.migrate_create_ticket_statuses()
@@ -363,6 +364,20 @@ class DatabaseManager:
             logger.log_info("Таблиця tasks буде створена через Base.metadata.create_all()")
         except Exception as e:
             logger.log_error(f"Помилка міграції створення tasks: {e}")
+    
+    def migrate_create_timers_table(self):
+        """Міграція: створення таблиці timers"""
+        try:
+            inspector = inspect(self.engine)
+            if 'timers' in inspector.get_table_names():
+                # Таблиця вже існує
+                return
+            
+            # Таблиця буде створена через Base.metadata.create_all()
+            # Ця міграція лише для логування
+            logger.log_info("Таблиця timers буде створена через Base.metadata.create_all()")
+        except Exception as e:
+            logger.log_error(f"Помилка міграції створення timers: {e}")
     
     @contextmanager
     def get_session(self, max_retries: int = 3) -> Generator[Session, None, None]:

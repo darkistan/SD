@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from database import init_database, get_session
-from models import User, Company, Ticket, TicketItem, ActiveSession, Log, PendingRequest, Printer, CartridgeType, PrinterCartridgeCompatibility, Contractor, TicketStatus, Poll, PollOption, PollResponse, Announcement, AnnouncementRecipient, TicketChat, Task
+from models import User, Company, Ticket, TicketItem, ActiveSession, Log, PendingRequest, Printer, CartridgeType, PrinterCartridgeCompatibility, Contractor, TicketStatus, Poll, PollOption, PollResponse, Announcement, AnnouncementRecipient, TicketChat, Task, Timer
 from ticket_manager import get_ticket_manager
 from printer_manager import get_printer_manager
 from pdf_report_manager import get_pdf_report_manager
@@ -28,6 +28,7 @@ from poll_manager import get_poll_manager
 from announcement_manager import get_announcement_manager
 from chat_manager import get_chat_manager
 from task_manager import get_task_manager
+from timer_manager import get_timer_manager
 from auth import auth_manager
 from logger import logger
 
@@ -376,11 +377,16 @@ def dashboard():
             'important_count': len(important_tasks),
             'today_tasks': today_tasks[:10]  # Обмежуємо до 10 для відображення
         }
+        
+        # Отримуємо таймери
+        timer_manager = get_timer_manager()
+        timers = timer_manager.get_all_timers()
     else:
         # Для користувача - тільки свої
         tickets = ticket_manager.get_user_tickets(current_user.user_id, limit=10)
         cartridge_stats = {}
         todo_stats = None
+        timers = []
     
     # Перевіряємо активні чати для кожного тікета (тільки для користувачів з Telegram)
     chat_manager = get_chat_manager()
@@ -395,6 +401,7 @@ def dashboard():
                          tickets=tickets,
                          cartridge_stats=cartridge_stats,
                          todo_stats=todo_stats,
+                         timers=timers,
                          date_from=date_from.strftime('%Y-%m-%d'),
                          date_to=date_to.strftime('%Y-%m-%d'))
 
@@ -2946,10 +2953,12 @@ def todo():
                 filters['list_name'] = selected_list
             
             # Фільтр за статусом виконання
+            # Якщо selected_status не встановлено, показуємо ВСІ завдання (і виконані, і невиконані)
             if selected_status == 'completed':
                 filters['is_completed'] = True
             elif selected_status == 'not_completed':
                 filters['is_completed'] = False
+            # Якщо selected_status порожній, не додаємо фільтр is_completed - показуємо всі
             
             # Фільтр за важливістю
             if selected_important == 'important':
@@ -2992,6 +3001,10 @@ def todo():
         # Отримуємо завдання на сьогодні для віджету
         today_tasks = task_manager.get_tasks_for_today()
         
+        # Отримуємо таймери
+        timer_manager = get_timer_manager()
+        timers = timer_manager.get_all_timers()
+        
         # Поточна дата для порівняння
         today = datetime.now().date()
         today_str = today.isoformat()
@@ -3012,6 +3025,7 @@ def todo():
                              tasks=processed_tasks,
                              all_lists=all_lists,
                              today_tasks=today_tasks,
+                             timers=timers,
                              filter_type=filter_type,
                              current_list=list_name,
                              today_str=today_str,
@@ -3408,6 +3422,148 @@ def todo_list_delete():
         flash(f'Помилка видалення списку: {e}', 'danger')
     
     return redirect(url_for('todo'))
+
+
+@app.route('/timer/create', methods=['POST'])
+@admin_required
+def timer_create():
+    """Створення таймера"""
+    try:
+        timer_manager = get_timer_manager()
+        
+        label = request.form.get('label', '').strip() or None
+        timer_type = request.form.get('timer_type', 'FORWARD').strip()
+        target_datetime = None
+        start_datetime = None
+        
+        # Для прямого таймера можна вказати дату/час початку відліку
+        if timer_type == 'FORWARD':
+            start_datetime_str = request.form.get('start_datetime', '').strip()
+            if start_datetime_str:
+                try:
+                    # Парсимо дату та час
+                    start_datetime = datetime.strptime(start_datetime_str, '%Y-%m-%dT%H:%M')
+                except ValueError:
+                    try:
+                        # Спробуємо тільки дату
+                        start_datetime = datetime.strptime(start_datetime_str, '%Y-%m-%d')
+                    except ValueError:
+                        flash('Невірний формат дати/часу початку відліку!', 'danger')
+                        return redirect(url_for('todo'))
+        
+        # Для зворотного таймера потрібна цільова дата/час
+        if timer_type == 'BACKWARD':
+            target_datetime_str = request.form.get('target_datetime', '').strip()
+            if not target_datetime_str:
+                flash('Для зворотного таймера потрібна цільова дата/час!', 'danger')
+                return redirect(url_for('todo'))
+            try:
+                # Парсимо дату та час
+                target_datetime = datetime.strptime(target_datetime_str, '%Y-%m-%dT%H:%M')
+            except ValueError:
+                try:
+                    # Спробуємо тільки дату
+                    target_datetime = datetime.strptime(target_datetime_str, '%Y-%m-%d')
+                except ValueError:
+                    flash('Невірний формат дати/часу!', 'danger')
+                    return redirect(url_for('todo'))
+        
+        timer_id = timer_manager.create_timer(
+            label=label,
+            timer_type=timer_type,
+            target_datetime=target_datetime,
+            start_datetime=start_datetime,
+            user_id=current_user.user_id
+        )
+        
+        if timer_id:
+            flash('Таймер створено успішно!', 'success')
+        else:
+            flash('Помилка створення таймера!', 'danger')
+            
+    except Exception as e:
+        logger.log_error(f"Помилка створення таймера: {e}")
+        flash(f'Помилка створення таймера: {e}', 'danger')
+    
+    return redirect(url_for('todo'))
+
+
+@app.route('/timer/<int:timer_id>/pause', methods=['POST'])
+@admin_required
+@csrf.exempt
+def timer_pause(timer_id):
+    """Зупинка таймера"""
+    try:
+        timer_manager = get_timer_manager()
+        success = timer_manager.pause_timer(timer_id)
+        
+        if success:
+            return jsonify({'success': True, 'message': 'Таймер зупинено'})
+        else:
+            return jsonify({'success': False, 'message': 'Помилка зупинки таймера'}), 400
+            
+    except Exception as e:
+        logger.log_error(f"Помилка зупинки таймера {timer_id}: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/timer/<int:timer_id>/resume', methods=['POST'])
+@admin_required
+@csrf.exempt
+def timer_resume(timer_id):
+    """Продовження таймера"""
+    try:
+        timer_manager = get_timer_manager()
+        success = timer_manager.resume_timer(timer_id)
+        
+        if success:
+            timer = timer_manager.get_timer(timer_id)
+            return jsonify({'success': True, 'message': 'Таймер продовжено', 'timer': timer})
+        else:
+            return jsonify({'success': False, 'message': 'Помилка продовження таймера'}), 400
+            
+    except Exception as e:
+        logger.log_error(f"Помилка продовження таймера {timer_id}: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/timer/<int:timer_id>/reset', methods=['POST'])
+@admin_required
+@csrf.exempt
+def timer_reset(timer_id):
+    """Скидання таймера"""
+    try:
+        timer_manager = get_timer_manager()
+        success = timer_manager.reset_timer(timer_id)
+        
+        if success:
+            timer = timer_manager.get_timer(timer_id)
+            return jsonify({'success': True, 'message': 'Таймер скинуто', 'timer': timer})
+        else:
+            return jsonify({'success': False, 'message': 'Помилка скидання таймера'}), 400
+            
+    except Exception as e:
+        logger.log_error(f"Помилка скидання таймера {timer_id}: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/timer/<int:timer_id>/delete', methods=['POST'])
+@admin_required
+@csrf.exempt
+def timer_delete(timer_id):
+    """Видалення таймера"""
+    try:
+        timer_manager = get_timer_manager()
+        success = timer_manager.delete_timer(timer_id)
+        
+        if success:
+            return jsonify({'success': True, 'message': 'Таймер видалено'})
+        else:
+            return jsonify({'success': False, 'message': 'Помилка видалення таймера'}), 400
+            
+    except Exception as e:
+        logger.log_error(f"Помилка видалення таймера {timer_id}: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 
 if __name__ == '__main__':

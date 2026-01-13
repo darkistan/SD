@@ -379,7 +379,8 @@ class TaskManager:
             with get_session() as session:
                 query = session.query(Task)
                 
-                if filters:
+                # Використовуємо filters is not None замість if filters, щоб обробляти порожні словники
+                if filters is not None:
                     if 'is_completed' in filters:
                         query = query.filter(Task.is_completed == filters['is_completed'])
                     

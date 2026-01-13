@@ -3,6 +3,7 @@
 {% block title %}Dashboard - Система заявок{% endblock %}
 
 {% block content %}
+<link href="{{ url_for('static', filename='css/timers.css') }}" rel="stylesheet">
 <div class="row">
     <div class="col-12">
         <h1 class="mb-4">
@@ -10,6 +11,79 @@
         </h1>
     </div>
 </div>
+
+{% if current_user.is_admin and timers %}
+<!-- Таймери -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-stopwatch text-primary"></i> Таймери
+                </h5>
+                <a href="{{ url_for('todo') }}" class="btn btn-sm btn-primary">
+                    <i class="bi bi-arrow-right"></i> Управління таймерами
+                </a>
+            </div>
+            <div class="card-body">
+                <div id="dashboardTimers">
+                    {% for timer in timers %}
+                        <div class="timer-card card" 
+                             data-timer-id="{{ timer.id }}" 
+                             data-timer-type="{{ timer.timer_type }}"
+                             data-start-datetime="{{ timer.start_datetime }}"
+                             data-target-datetime="{{ timer.target_datetime or '' }}"
+                             data-is-paused="{{ 'true' if timer.is_paused else 'false' }}"
+                             data-paused-duration="{{ timer.paused_duration }}"
+                             data-last-pause-start="{{ timer.last_pause_start or '' }}">
+                            <div class="card-body">
+                                <div class="d-flex align-items-center mb-1">
+                                    {% if timer.timer_type == 'FORWARD' %}
+                                    <i class="bi bi-arrow-up-circle text-success me-1"></i>
+                                    {% else %}
+                                    <i class="bi bi-arrow-down-circle text-danger me-1"></i>
+                                    {% endif %}
+                                    <div>
+                                        <div class="timer-label">{{ timer.label or 'Без підпису' }}</div>
+                                        {% if timer.is_paused %}
+                                        <small class="text-warning" style="font-size: 0.65rem;"><i class="bi bi-pause-fill"></i> Пауза</small>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <div class="timer-display mb-1">
+                                    <div class="d-flex align-items-baseline">
+                                        <span class="timer-days mb-0 me-1">0</span>
+                                        <small class="text-muted me-1" style="font-size: 0.65rem;">днів</small>
+                                        <span class="timer-hours mb-0 me-1">0</span>
+                                        <small class="text-muted" style="font-size: 0.65rem;">годин</small>
+                                    </div>
+                                </div>
+                                <div class="btn-group btn-group-sm">
+                                    {% if timer.is_paused %}
+                                    <button class="btn btn-outline-success timer-resume-btn" data-timer-id="{{ timer.id }}" title="Продовжити">
+                                        <i class="bi bi-play-fill"></i>
+                                    </button>
+                                    {% else %}
+                                    <button class="btn btn-outline-warning timer-pause-btn" data-timer-id="{{ timer.id }}" title="Зупинити">
+                                        <i class="bi bi-pause-fill"></i>
+                                    </button>
+                                    {% endif %}
+                                    <button class="btn btn-outline-secondary timer-reset-btn" data-timer-id="{{ timer.id }}" title="Скинути">
+                                        <i class="bi bi-arrow-counterclockwise"></i>
+                                    </button>
+                                    <button class="btn btn-outline-danger timer-delete-btn" data-timer-id="{{ timer.id }}" title="Видалити">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 {% if current_user.is_admin and todo_stats %}
 <!-- TODO Статистика -->
@@ -399,5 +473,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
+<script src="{{ url_for('static', filename='js/timers.js') }}"></script>
 {% endblock %}
 

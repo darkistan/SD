@@ -371,6 +371,7 @@ class TaskManager:
                 - recurrence_type: str - фільтр за типом повторення
                 - date_from: datetime - фільтр за датою від (для due_date)
                 - date_to: datetime - фільтр за датою до (для due_date)
+                - search: str - пошук за назвою завдання (частковий збіг)
                 
         Returns:
             Список завдань
@@ -406,6 +407,11 @@ class TaskManager:
                         # Додаємо кінець дня для date_to
                         date_to_end = filters['date_to'].replace(hour=23, minute=59, second=59)
                         query = query.filter(Task.due_date <= date_to_end)
+                    
+                    if 'search' in filters and filters['search']:
+                        # Пошук за назвою завдання (частковий збіг, нечутливий до регістру)
+                        search_term = f"%{filters['search']}%"
+                        query = query.filter(Task.title.ilike(search_term))
                 
                 # Сортування
                 if sort_by and sort_order:
@@ -510,6 +516,27 @@ class TaskManager:
             return self.get_all_tasks({'is_important': True, 'is_completed': False})
         else:
             return self.get_all_tasks({'list_name': list_name})
+    
+    def get_undefined_tasks(self) -> List[Dict[str, Any]]:
+        """
+        Отримання невизначених завдань (без списку та терміну виконання)
+        
+        Returns:
+            Список невизначених завдань
+        """
+        try:
+            with get_session() as session:
+                tasks = session.query(Task).filter(
+                    Task.list_name.is_(None),
+                    Task.due_date.is_(None),
+                    Task.is_completed == False
+                ).order_by(Task.created_at.desc()).all()
+                
+                return [self._task_to_dict(task) for task in tasks]
+                
+        except Exception as e:
+            logger.log_error(f"Помилка отримання невизначених завдань: {e}")
+            return []
     
     def get_all_lists(self) -> List[str]:
         """

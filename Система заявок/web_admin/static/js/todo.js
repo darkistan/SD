@@ -15,7 +15,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Оновлення кількості вибраних завдань
     function updateSelectedCount() {
-        const selected = document.querySelectorAll('.task-select:checked');
+        const selected = document.querySelectorAll('.task-select:checked, .undefined-task-select:checked');
         const count = selected.length;
         selectedCountSpan.textContent = count;
         
@@ -46,6 +46,18 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
+    // Вибір всіх невизначених задач
+    const undefinedSelectAll = document.querySelector('.undefined-select-all');
+    const undefinedTaskSelects = document.querySelectorAll('.undefined-task-select');
+    if (undefinedSelectAll) {
+        undefinedSelectAll.addEventListener('change', function() {
+            undefinedTaskSelects.forEach(checkbox => {
+                checkbox.checked = this.checked;
+            });
+            updateSelectedCount();
+        });
+    }
+    
     // Вибір окремих завдань
     taskSelectCheckboxes.forEach(checkbox => {
         checkbox.addEventListener('change', function() {
@@ -54,6 +66,18 @@ document.addEventListener('DOMContentLoaded', function() {
             if (selectAllCheckbox) {
                 const allChecked = Array.from(taskSelectCheckboxes).every(cb => cb.checked);
                 selectAllCheckbox.checked = allChecked;
+            }
+        });
+    });
+    
+    // Вибір окремих невизначених задач
+    undefinedTaskSelects.forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            updateSelectedCount();
+            // Скидаємо "вибрати всі", якщо не всі вибрані
+            if (undefinedSelectAll) {
+                const allChecked = Array.from(undefinedTaskSelects).every(cb => cb.checked);
+                undefinedSelectAll.checked = allChecked;
             }
         });
     });
@@ -126,6 +150,48 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     // Оновлюємо action форми
                     taskDetailForm.action = `/todo/task/${taskId}/update`;
+                    
+                    // Зберігаємо параметри фільтрації для redirect після оновлення
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const filterType = urlParams.get('filter') || 'all';
+                    const search = urlParams.get('search') || '';
+                    const listName = urlParams.get('list') || '';
+                    const selectedList = urlParams.get('list_filter') || '';
+                    const selectedStatus = urlParams.get('status_filter') || '';
+                    const selectedImportant = urlParams.get('important_filter') || '';
+                    const selectedRecurrence = urlParams.get('recurrence_filter') || '';
+                    const selectedPeriod = urlParams.get('period') || '';
+                    const dateFrom = urlParams.get('date_from') || '';
+                    const dateTo = urlParams.get('date_to') || '';
+                    const sortBy = urlParams.get('sort_by') || 'due_date';
+                    const sortOrder = urlParams.get('sort_order') || 'asc';
+                    
+                    // Видаляємо старі приховані поля фільтрації
+                    taskDetailForm.querySelectorAll('input[name^="filter_"]').forEach(input => input.remove());
+                    
+                    // Додаємо нові приховані поля з параметрами фільтрації
+                    const addHiddenField = (name, value) => {
+                        if (value) {
+                            const input = document.createElement('input');
+                            input.type = 'hidden';
+                            input.name = name;
+                            input.value = value;
+                            taskDetailForm.appendChild(input);
+                        }
+                    };
+                    
+                    addHiddenField('filter_type', filterType);
+                    addHiddenField('filter_search', search);
+                    addHiddenField('filter_list', listName);
+                    addHiddenField('filter_list_filter', selectedList);
+                    addHiddenField('filter_status_filter', selectedStatus);
+                    addHiddenField('filter_important_filter', selectedImportant);
+                    addHiddenField('filter_recurrence_filter', selectedRecurrence);
+                    addHiddenField('filter_period', selectedPeriod);
+                    addHiddenField('filter_date_from', dateFrom);
+                    addHiddenField('filter_date_to', dateTo);
+                    addHiddenField('filter_sort_by', sortBy);
+                    addHiddenField('filter_sort_order', sortOrder);
                     
                     // Показуємо панель
                     detailsPanel.classList.add('active');

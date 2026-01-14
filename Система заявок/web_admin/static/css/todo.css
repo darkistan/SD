@@ -74,6 +74,15 @@
     color: var(--bs-body-color);
 }
 
+/* Стиль для кнопки collapse в заголовку картки (за замовчуванням) */
+.card-header:not(.bg-primary):not(.bg-dark):not(.bg-secondary) .collapse-toggle {
+    color: var(--bs-body-color);
+}
+
+.card-header:not(.bg-primary):not(.bg-dark):not(.bg-secondary) .collapse-toggle:hover {
+    color: var(--bs-primary);
+}
+
 .collapse-toggle:hover {
     color: var(--bs-primary);
 }
@@ -101,6 +110,23 @@
 
 #timers-section-content.collapse:not(.show) {
     display: none;
+}
+
+#filters-section-content.collapse:not(.show) {
+    display: none;
+}
+
+/* Стиль для кнопки collapse в заголовку картки з темним фоном */
+.card-header.bg-primary .collapse-toggle,
+.card-header.bg-dark .collapse-toggle,
+.card-header.bg-secondary .collapse-toggle {
+    color: var(--bs-white);
+}
+
+.card-header.bg-primary .collapse-toggle:hover,
+.card-header.bg-dark .collapse-toggle:hover,
+.card-header.bg-secondary .collapse-toggle:hover {
+    color: var(--bs-light);
 }
 
 /* Main Content */

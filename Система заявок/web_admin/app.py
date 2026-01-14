@@ -2901,6 +2901,7 @@ def todo():
         list_name = request.args.get('list', None)
         
         # Отримуємо параметри фільтрів (тільки для "Весь перелік")
+        selected_search = request.args.get('search', '').strip()
         selected_list = request.args.get('list_filter', '').strip()
         selected_status = request.args.get('status_filter', '').strip()
         selected_important = request.args.get('important_filter', '').strip()
@@ -2953,12 +2954,14 @@ def todo():
                 filters['list_name'] = selected_list
             
             # Фільтр за статусом виконання
-            # Якщо selected_status не встановлено, показуємо ВСІ завдання (і виконані, і невиконані)
+            # За замовчуванням показуємо тільки невиконані завдання
             if selected_status == 'completed':
                 filters['is_completed'] = True
             elif selected_status == 'not_completed':
                 filters['is_completed'] = False
-            # Якщо selected_status порожній, не додаємо фільтр is_completed - показуємо всі
+            else:
+                # Якщо selected_status порожній, показуємо тільки невиконані
+                filters['is_completed'] = False
             
             # Фільтр за важливістю
             if selected_important == 'important':
@@ -2978,6 +2981,10 @@ def todo():
                 filters['date_from'] = date_from
             if date_to:
                 filters['date_to'] = date_to
+            
+            # Фільтр пошуку за назвою
+            if selected_search:
+                filters['search'] = selected_search
             
             tasks = task_manager.get_all_tasks(filters, sort_by=sort_by, sort_order=sort_order)
         elif filter_type == 'completed':
@@ -3005,6 +3012,9 @@ def todo():
         timer_manager = get_timer_manager()
         timers = timer_manager.get_all_timers()
         
+        # Отримуємо невизначені задачі (без списку та терміну виконання)
+        undefined_tasks = task_manager.get_undefined_tasks()
+        
         # Поточна дата для порівняння
         today = datetime.now().date()
         today_str = today.isoformat()
@@ -3026,9 +3036,11 @@ def todo():
                              all_lists=all_lists,
                              today_tasks=today_tasks,
                              timers=timers,
+                             undefined_tasks=undefined_tasks,
                              filter_type=filter_type,
                              current_list=list_name,
                              today_str=today_str,
+                             selected_search=selected_search,
                              selected_list=selected_list,
                              selected_status=selected_status,
                              selected_important=selected_important,
@@ -3118,10 +3130,38 @@ def todo_task_update(task_id):
     try:
         task_manager = get_task_manager()
         
+        # Функція для отримання redirect URL з параметрами фільтрації
+        def get_redirect_url():
+            filter_type = request.form.get('filter_type', 'all')
+            filter_search = request.form.get('filter_search', '')
+            filter_list = request.form.get('filter_list', '')
+            filter_list_filter = request.form.get('filter_list_filter', '')
+            filter_status_filter = request.form.get('filter_status_filter', '')
+            filter_important_filter = request.form.get('filter_important_filter', '')
+            filter_recurrence_filter = request.form.get('filter_recurrence_filter', '')
+            filter_period = request.form.get('filter_period', '')
+            filter_date_from = request.form.get('filter_date_from', '')
+            filter_date_to = request.form.get('filter_date_to', '')
+            filter_sort_by = request.form.get('filter_sort_by', 'due_date')
+            filter_sort_order = request.form.get('filter_sort_order', 'asc')
+            return url_for('todo', 
+                          filter=filter_type,
+                          search=filter_search if filter_search else None,
+                          list=filter_list if filter_list else None,
+                          list_filter=filter_list_filter if filter_list_filter else None,
+                          status_filter=filter_status_filter if filter_status_filter else None,
+                          important_filter=filter_important_filter if filter_important_filter else None,
+                          recurrence_filter=filter_recurrence_filter if filter_recurrence_filter else None,
+                          period=filter_period if filter_period else None,
+                          date_from=filter_date_from if filter_date_from else None,
+                          date_to=filter_date_to if filter_date_to else None,
+                          sort_by=filter_sort_by,
+                          sort_order=filter_sort_order)
+        
         title = request.form.get('title', '').strip()
         if not title:
             flash('Назва завдання обов\'язкова!', 'danger')
-            return redirect(url_for('todo'))
+            return redirect(get_redirect_url())
         
         notes = request.form.get('notes', '').strip() or None
         list_name = request.form.get('list_name', '').strip() or None
@@ -3134,7 +3174,7 @@ def todo_task_update(task_id):
                 due_date = datetime.strptime(due_date_str, '%Y-%m-%d')
             except ValueError:
                 flash('Невірний формат дати!', 'danger')
-                return redirect(url_for('todo'))
+                return redirect(get_redirect_url())
         
         recurrence_type = request.form.get('recurrence_type', '').strip()
         # Якщо порожній рядок, встановлюємо None для видалення повторення
@@ -3153,11 +3193,37 @@ def todo_task_update(task_id):
         else:
             flash('Помилка оновлення завдання!', 'danger')
         
-        return redirect(url_for('todo'))
+        return redirect(get_redirect_url())
     except Exception as e:
         logger.log_error(f"Помилка оновлення завдання {task_id}: {e}")
         flash(f'Помилка оновлення завдання: {e}', 'danger')
-        return redirect(url_for('todo'))
+        # Зберігаємо параметри фільтрації навіть при помилці
+        filter_type = request.form.get('filter_type', 'all')
+        filter_search = request.form.get('filter_search', '')
+        filter_list = request.form.get('filter_list', '')
+        filter_list_filter = request.form.get('filter_list_filter', '')
+        filter_status_filter = request.form.get('filter_status_filter', '')
+        filter_important_filter = request.form.get('filter_important_filter', '')
+        filter_recurrence_filter = request.form.get('filter_recurrence_filter', '')
+        filter_period = request.form.get('filter_period', '')
+        filter_date_from = request.form.get('filter_date_from', '')
+        filter_date_to = request.form.get('filter_date_to', '')
+        filter_sort_by = request.form.get('filter_sort_by', 'due_date')
+        filter_sort_order = request.form.get('filter_sort_order', 'asc')
+        redirect_url = url_for('todo', 
+                              filter=filter_type,
+                              search=filter_search if filter_search else None,
+                              list=filter_list if filter_list else None,
+                              list_filter=filter_list_filter if filter_list_filter else None,
+                              status_filter=filter_status_filter if filter_status_filter else None,
+                              important_filter=filter_important_filter if filter_important_filter else None,
+                              recurrence_filter=filter_recurrence_filter if filter_recurrence_filter else None,
+                              period=filter_period if filter_period else None,
+                              date_from=filter_date_from if filter_date_from else None,
+                              date_to=filter_date_to if filter_date_to else None,
+                              sort_by=filter_sort_by,
+                              sort_order=filter_sort_order)
+        return redirect(redirect_url)
 
 
 @app.route('/todo/task/<int:task_id>/complete', methods=['POST'])

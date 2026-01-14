@@ -288,3 +288,19 @@
         transform: scale(1);
     }
 }
+
+/* Стилі для груп задач */
+.task-group {
+    border-left: 3px solid var(--bs-border-color);
+    padding-left: 1rem;
+    margin-bottom: 2rem;
+}
+
+.task-group:first-child {
+    border-left-color: var(--bs-primary);
+}
+
+.task-group h6 {
+    font-weight: 600;
+    margin-bottom: 1rem;
+}

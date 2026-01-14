@@ -3031,8 +3031,43 @@ def todo():
                 task_dict['is_overdue'] = False
             processed_tasks.append(task_dict)
         
+        # Розбиваємо задачі на групи за датами (тільки для "Весь перелік")
+        grouped_tasks = None
+        if filter_type == 'all':
+            # Визначаємо межі поточного тижня
+            weekday = today.weekday()  # 0 = понеділок, 6 = неділя
+            monday = today - timedelta(days=weekday)
+            sunday = monday + timedelta(days=6)
+            
+            # Розбиваємо задачі на групи
+            grouped_tasks = {
+                'today': [],
+                'this_week': [],
+                'later': [],
+                'no_date': []
+            }
+            
+            for task in processed_tasks:
+                if not task.get('due_date'):
+                    grouped_tasks['no_date'].append(task)
+                else:
+                    # Парсимо дату з рядка
+                    due_date_str = task['due_date'][:10] if len(task['due_date']) > 10 else task['due_date']
+                    try:
+                        due_date = datetime.strptime(due_date_str, '%Y-%m-%d').date()
+                        if due_date == today:
+                            grouped_tasks['today'].append(task)
+                        elif monday <= due_date <= sunday:
+                            grouped_tasks['this_week'].append(task)
+                        elif due_date > sunday:
+                            grouped_tasks['later'].append(task)
+                    except (ValueError, TypeError):
+                        # Якщо не вдалося розпарсити дату, додаємо до "Без терміну"
+                        grouped_tasks['no_date'].append(task)
+        
         return render_template('todo.html',
                              tasks=processed_tasks,
+                             grouped_tasks=grouped_tasks,
                              all_lists=all_lists,
                              today_tasks=today_tasks,
                              timers=timers,

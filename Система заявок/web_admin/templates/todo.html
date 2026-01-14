@@ -460,167 +460,767 @@
             {% endif %}
             
             <div class="card-body">
-                {% if tasks %}
-                <div class="table-responsive">
-                    <table class="table table-hover">
-                        <thead>
-                            <tr>
-                                <th style="width: 40px;">
-                                    <input type="checkbox" id="selectAll" class="form-check-input">
-                                </th>
-                                <th style="width: 120px;">
-                                    {% if filter_type == 'all' %}
-                                    {% if sort_by == 'is_completed' %}
-                                        {% set next_order_status = 'asc' if sort_order == 'desc' else 'desc' %}
-                                    {% else %}
-                                        {% set next_order_status = 'asc' %}
-                                    {% endif %}
-                                    <a href="{{ url_for('todo', filter='all', sort_by='is_completed', sort_order=next_order_status, search=selected_search, list_filter=selected_list, status_filter=selected_status, important_filter=selected_important, recurrence_filter=selected_recurrence, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-reset">
-                                        Виконано
-                                        {% if sort_by == 'is_completed' %}
-                                            {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
-                                        {% endif %}
-                                    </a>
-                                    {% else %}
-                                    Виконано
-                                    {% endif %}
-                                </th>
-                                <th>
-                                    {% if filter_type == 'all' %}
-                                    {% if sort_by == 'title' %}
-                                        {% set next_order_title = 'asc' if sort_order == 'desc' else 'desc' %}
-                                    {% else %}
-                                        {% set next_order_title = 'asc' %}
-                                    {% endif %}
-                                    <a href="{{ url_for('todo', filter='all', sort_by='title', sort_order=next_order_title, search=selected_search, list_filter=selected_list, status_filter=selected_status, important_filter=selected_important, recurrence_filter=selected_recurrence, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-reset">
-                                        Назва
-                                        {% if sort_by == 'title' %}
-                                            {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
-                                        {% endif %}
-                                    </a>
-                                    {% else %}
-                                    Назва
-                                    {% endif %}
-                                </th>
-                                <th style="width: 150px;">
-                                    {% if filter_type == 'all' %}
-                                    {% if sort_by == 'due_date' %}
-                                        {% set next_order_date = 'asc' if sort_order == 'desc' else 'desc' %}
-                                    {% else %}
-                                        {% set next_order_date = 'asc' %}
-                                    {% endif %}
-                                    <a href="{{ url_for('todo', filter='all', sort_by='due_date', sort_order=next_order_date, search=selected_search, list_filter=selected_list, status_filter=selected_status, important_filter=selected_important, recurrence_filter=selected_recurrence, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-reset">
-                                        Термін
-                                        {% if sort_by == 'due_date' %}
-                                            {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
-                                        {% endif %}
-                                    </a>
-                                    {% else %}
-                                    Термін
-                                    {% endif %}
-                                </th>
-                                <th style="width: 150px;">
-                                    {% if filter_type == 'all' %}
-                                    {% if sort_by == 'list_name' %}
-                                        {% set next_order_list = 'asc' if sort_order == 'desc' else 'desc' %}
-                                    {% else %}
-                                        {% set next_order_list = 'asc' %}
-                                    {% endif %}
-                                    <a href="{{ url_for('todo', filter='all', sort_by='list_name', sort_order=next_order_list, search=selected_search, list_filter=selected_list, status_filter=selected_status, important_filter=selected_important, recurrence_filter=selected_recurrence, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-reset">
-                                        Список
-                                        {% if sort_by == 'list_name' %}
-                                            {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
-                                        {% endif %}
-                                    </a>
-                                    {% else %}
-                                    Список
-                                    {% endif %}
-                                </th>
-                                <th style="width: 100px;">Дії</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tasksTableBody">
-                            {% for task in tasks %}
-                            <tr class="task-row {% if task.is_completed %}task-completed{% endif %} {% if task.is_overdue %}task-overdue{% endif %}" data-task-id="{{ task.id }}">
-                                <td>
-                                    <input type="checkbox" class="form-check-input task-select" value="{{ task.id }}" name="task_ids">
-                                </td>
-                                <td>
-                                    <div class="form-check form-check-lg">
-                                        <input type="checkbox" class="form-check-input task-complete" id="task-complete-{{ task.id }}" data-task-id="{{ task.id }}" {% if task.is_completed %}checked{% endif %}>
-                                        <label class="form-check-label" for="task-complete-{{ task.id }}" style="cursor: pointer; font-weight: 500;">
-                                            {% if task.is_completed %}
-                                            <span class="text-success">Виконано</span>
+                {% if filter_type == 'all' and grouped_tasks %}
+                    {# Блоки для "Весь перелік" #}
+                    {% if grouped_tasks.today %}
+                    <div class="task-group mb-4">
+                        <h6 class="text-primary mb-3"><i class="bi bi-calendar-day"></i> Сьогодні ({{ grouped_tasks.today|length }})</h6>
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 40px;">
+                                            <input type="checkbox" class="form-check-input task-group-select-all" data-group="today">
+                                        </th>
+                                        <th style="width: 120px;">
+                                            {% if sort_by == 'is_completed' %}
+                                                {% set next_order_status = 'asc' if sort_order == 'desc' else 'desc' %}
                                             {% else %}
-                                            <span class="text-muted">Виконати</span>
+                                                {% set next_order_status = 'asc' %}
                                             {% endif %}
-                                        </label>
-                                    </div>
-                                </td>
-                                <td>
-                                    <div class="d-flex align-items-center gap-2">
-                                        <form method="POST" action="{{ url_for('todo_task_toggle_important', task_id=task.id) }}" style="display:inline;">
-                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                            <button type="submit" class="btn btn-sm btn-link p-0 task-important-btn" title="{% if task.is_important %}Прибрати з важливих{% else %}Додати до важливих{% endif %}">
-                                                {% if task.is_important %}
-                                                <i class="bi bi-star-fill text-warning" style="font-size: 1.2rem;"></i>
-                                                {% else %}
-                                                <i class="bi bi-star text-muted" style="font-size: 1.2rem;"></i>
+                                            <a href="{{ url_for('todo', filter='all', sort_by='is_completed', sort_order=next_order_status, search=selected_search, list_filter=selected_list, status_filter=selected_status, important_filter=selected_important, recurrence_filter=selected_recurrence, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-reset">
+                                                Виконано
+                                                {% if sort_by == 'is_completed' %}
+                                                    {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
                                                 {% endif %}
+                                            </a>
+                                        </th>
+                                        <th>
+                                            {% if sort_by == 'title' %}
+                                                {% set next_order_title = 'asc' if sort_order == 'desc' else 'desc' %}
+                                            {% else %}
+                                                {% set next_order_title = 'asc' %}
+                                            {% endif %}
+                                            <a href="{{ url_for('todo', filter='all', sort_by='title', sort_order=next_order_title, search=selected_search, list_filter=selected_list, status_filter=selected_status, important_filter=selected_important, recurrence_filter=selected_recurrence, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-reset">
+                                                Назва
+                                                {% if sort_by == 'title' %}
+                                                    {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
+                                                {% endif %}
+                                            </a>
+                                        </th>
+                                        <th style="width: 150px;">
+                                            {% if sort_by == 'due_date' %}
+                                                {% set next_order_date = 'asc' if sort_order == 'desc' else 'desc' %}
+                                            {% else %}
+                                                {% set next_order_date = 'asc' %}
+                                            {% endif %}
+                                            <a href="{{ url_for('todo', filter='all', sort_by='due_date', sort_order=next_order_date, search=selected_search, list_filter=selected_list, status_filter=selected_status, important_filter=selected_important, recurrence_filter=selected_recurrence, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-reset">
+                                                Термін
+                                                {% if sort_by == 'due_date' %}
+                                                    {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
+                                                {% endif %}
+                                            </a>
+                                        </th>
+                                        <th style="width: 150px;">
+                                            {% if sort_by == 'list_name' %}
+                                                {% set next_order_list = 'asc' if sort_order == 'desc' else 'desc' %}
+                                            {% else %}
+                                                {% set next_order_list = 'asc' %}
+                                            {% endif %}
+                                            <a href="{{ url_for('todo', filter='all', sort_by='list_name', sort_order=next_order_list, search=selected_search, list_filter=selected_list, status_filter=selected_status, important_filter=selected_important, recurrence_filter=selected_recurrence, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-reset">
+                                                Список
+                                                {% if sort_by == 'list_name' %}
+                                                    {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
+                                                {% endif %}
+                                            </a>
+                                        </th>
+                                        <th style="width: 100px;">Дії</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for task in grouped_tasks.today %}
+                                    <tr class="task-row {% if task.is_completed %}task-completed{% endif %} {% if task.is_overdue %}task-overdue{% endif %}" data-task-id="{{ task.id }}">
+                                        <td>
+                                            <input type="checkbox" class="form-check-input task-select" value="{{ task.id }}" name="task_ids">
+                                        </td>
+                                        <td>
+                                            <div class="form-check form-check-lg">
+                                                <input type="checkbox" class="form-check-input task-complete" id="task-complete-{{ task.id }}" data-task-id="{{ task.id }}" {% if task.is_completed %}checked{% endif %}>
+                                                <label class="form-check-label" for="task-complete-{{ task.id }}" style="cursor: pointer; font-weight: 500;">
+                                                    {% if task.is_completed %}
+                                                    <span class="text-success">Виконано</span>
+                                                    {% else %}
+                                                    <span class="text-muted">Виконати</span>
+                                                    {% endif %}
+                                                </label>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div class="d-flex align-items-center gap-2">
+                                                <form method="POST" action="{{ url_for('todo_task_toggle_important', task_id=task.id) }}" style="display:inline;">
+                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                                    <button type="submit" class="btn btn-sm btn-link p-0 task-important-btn" title="{% if task.is_important %}Прибрати з важливих{% else %}Додати до важливих{% endif %}">
+                                                        {% if task.is_important %}
+                                                        <i class="bi bi-star-fill text-warning" style="font-size: 1.2rem;"></i>
+                                                        {% else %}
+                                                        <i class="bi bi-star text-muted" style="font-size: 1.2rem;"></i>
+                                                        {% endif %}
+                                                    </button>
+                                                </form>
+                                                <div class="flex-grow-1">
+                                                    <a href="#" class="task-title-link" data-task-id="{{ task.id }}">
+                                                        {{ task.title }}
+                                                    </a>
+                                                    {% if task.notes %}
+                                                    <br><small class="text-muted">{{ task.notes[:100] }}{% if task.notes|length > 100 %}...{% endif %}</small>
+                                                    {% endif %}
+                                                    {% if task.recurrence_type %}
+                                                    <span class="badge bg-info ms-1" title="Повторюване завдання">
+                                                        <i class="bi bi-arrow-repeat"></i>
+                                                    </span>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            {% if task.due_date %}
+                                                {% set due_date_str = task.due_date[:10] if task.due_date|length > 10 else task.due_date %}
+                                                <span class="{% if task.is_overdue %}text-danger fw-bold{% endif %}">
+                                                    {{ due_date_str }}
+                                                </span>
+                                            {% else %}
+                                                <span class="text-muted">Без терміну</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if task.list_name %}
+                                            <span class="badge bg-secondary">{{ task.list_name }}</span>
+                                            {% else %}
+                                            <span class="text-muted">-</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-primary task-detail-btn" data-task-id="{{ task.id }}" title="Редагувати">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            {% if task.is_completed %}
+                                            <form method="POST" action="{{ url_for('todo_task_delete', task_id=task.id) }}" style="display:inline;" onsubmit="return confirm('Видалити завдання \"{{ task.title }}\"?');">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                                <button type="submit" class="btn btn-sm btn-outline-danger ms-1" title="Видалити">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </form>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    {% if grouped_tasks.this_week %}
+                    <div class="task-group mb-4">
+                        <h6 class="text-info mb-3"><i class="bi bi-calendar-week"></i> На цьому тижні ({{ grouped_tasks.this_week|length }})</h6>
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 40px;">
+                                            <input type="checkbox" class="form-check-input task-group-select-all" data-group="this_week">
+                                        </th>
+                                        <th style="width: 120px;">
+                                            {% if sort_by == 'is_completed' %}
+                                                {% set next_order_status = 'asc' if sort_order == 'desc' else 'desc' %}
+                                            {% else %}
+                                                {% set next_order_status = 'asc' %}
+                                            {% endif %}
+                                            <a href="{{ url_for('todo', filter='all', sort_by='is_completed', sort_order=next_order_status, search=selected_search, list_filter=selected_list, status_filter=selected_status, important_filter=selected_important, recurrence_filter=selected_recurrence, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-reset">
+                                                Виконано
+                                                {% if sort_by == 'is_completed' %}
+                                                    {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
+                                                {% endif %}
+                                            </a>
+                                        </th>
+                                        <th>
+                                            {% if sort_by == 'title' %}
+                                                {% set next_order_title = 'asc' if sort_order == 'desc' else 'desc' %}
+                                            {% else %}
+                                                {% set next_order_title = 'asc' %}
+                                            {% endif %}
+                                            <a href="{{ url_for('todo', filter='all', sort_by='title', sort_order=next_order_title, search=selected_search, list_filter=selected_list, status_filter=selected_status, important_filter=selected_important, recurrence_filter=selected_recurrence, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-reset">
+                                                Назва
+                                                {% if sort_by == 'title' %}
+                                                    {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
+                                                {% endif %}
+                                            </a>
+                                        </th>
+                                        <th style="width: 150px;">
+                                            {% if sort_by == 'due_date' %}
+                                                {% set next_order_date = 'asc' if sort_order == 'desc' else 'desc' %}
+                                            {% else %}
+                                                {% set next_order_date = 'asc' %}
+                                            {% endif %}
+                                            <a href="{{ url_for('todo', filter='all', sort_by='due_date', sort_order=next_order_date, search=selected_search, list_filter=selected_list, status_filter=selected_status, important_filter=selected_important, recurrence_filter=selected_recurrence, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-reset">
+                                                Термін
+                                                {% if sort_by == 'due_date' %}
+                                                    {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
+                                                {% endif %}
+                                            </a>
+                                        </th>
+                                        <th style="width: 150px;">
+                                            {% if sort_by == 'list_name' %}
+                                                {% set next_order_list = 'asc' if sort_order == 'desc' else 'desc' %}
+                                            {% else %}
+                                                {% set next_order_list = 'asc' %}
+                                            {% endif %}
+                                            <a href="{{ url_for('todo', filter='all', sort_by='list_name', sort_order=next_order_list, search=selected_search, list_filter=selected_list, status_filter=selected_status, important_filter=selected_important, recurrence_filter=selected_recurrence, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-reset">
+                                                Список
+                                                {% if sort_by == 'list_name' %}
+                                                    {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
+                                                {% endif %}
+                                            </a>
+                                        </th>
+                                        <th style="width: 100px;">Дії</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for task in grouped_tasks.this_week %}
+                                    <tr class="task-row {% if task.is_completed %}task-completed{% endif %} {% if task.is_overdue %}task-overdue{% endif %}" data-task-id="{{ task.id }}">
+                                        <td>
+                                            <input type="checkbox" class="form-check-input task-select" value="{{ task.id }}" name="task_ids">
+                                        </td>
+                                        <td>
+                                            <div class="form-check form-check-lg">
+                                                <input type="checkbox" class="form-check-input task-complete" id="task-complete-{{ task.id }}" data-task-id="{{ task.id }}" {% if task.is_completed %}checked{% endif %}>
+                                                <label class="form-check-label" for="task-complete-{{ task.id }}" style="cursor: pointer; font-weight: 500;">
+                                                    {% if task.is_completed %}
+                                                    <span class="text-success">Виконано</span>
+                                                    {% else %}
+                                                    <span class="text-muted">Виконати</span>
+                                                    {% endif %}
+                                                </label>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div class="d-flex align-items-center gap-2">
+                                                <form method="POST" action="{{ url_for('todo_task_toggle_important', task_id=task.id) }}" style="display:inline;">
+                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                                    <button type="submit" class="btn btn-sm btn-link p-0 task-important-btn" title="{% if task.is_important %}Прибрати з важливих{% else %}Додати до важливих{% endif %}">
+                                                        {% if task.is_important %}
+                                                        <i class="bi bi-star-fill text-warning" style="font-size: 1.2rem;"></i>
+                                                        {% else %}
+                                                        <i class="bi bi-star text-muted" style="font-size: 1.2rem;"></i>
+                                                        {% endif %}
+                                                    </button>
+                                                </form>
+                                                <div class="flex-grow-1">
+                                                    <a href="#" class="task-title-link" data-task-id="{{ task.id }}">
+                                                        {{ task.title }}
+                                                    </a>
+                                                    {% if task.notes %}
+                                                    <br><small class="text-muted">{{ task.notes[:100] }}{% if task.notes|length > 100 %}...{% endif %}</small>
+                                                    {% endif %}
+                                                    {% if task.recurrence_type %}
+                                                    <span class="badge bg-info ms-1" title="Повторюване завдання">
+                                                        <i class="bi bi-arrow-repeat"></i>
+                                                    </span>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            {% if task.due_date %}
+                                                {% set due_date_str = task.due_date[:10] if task.due_date|length > 10 else task.due_date %}
+                                                <span class="{% if task.is_overdue %}text-danger fw-bold{% endif %}">
+                                                    {{ due_date_str }}
+                                                </span>
+                                            {% else %}
+                                                <span class="text-muted">Без терміну</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if task.list_name %}
+                                            <span class="badge bg-secondary">{{ task.list_name }}</span>
+                                            {% else %}
+                                            <span class="text-muted">-</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-primary task-detail-btn" data-task-id="{{ task.id }}" title="Редагувати">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            {% if task.is_completed %}
+                                            <form method="POST" action="{{ url_for('todo_task_delete', task_id=task.id) }}" style="display:inline;" onsubmit="return confirm('Видалити завдання \"{{ task.title }}\"?');">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                                <button type="submit" class="btn btn-sm btn-outline-danger ms-1" title="Видалити">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </form>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    {% if grouped_tasks.later %}
+                    <div class="task-group mb-4">
+                        <h6 class="text-secondary mb-3"><i class="bi bi-calendar-event"></i> Пізніше ({{ grouped_tasks.later|length }})</h6>
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 40px;">
+                                            <input type="checkbox" class="form-check-input task-group-select-all" data-group="later">
+                                        </th>
+                                        <th style="width: 120px;">
+                                            {% if sort_by == 'is_completed' %}
+                                                {% set next_order_status = 'asc' if sort_order == 'desc' else 'desc' %}
+                                            {% else %}
+                                                {% set next_order_status = 'asc' %}
+                                            {% endif %}
+                                            <a href="{{ url_for('todo', filter='all', sort_by='is_completed', sort_order=next_order_status, search=selected_search, list_filter=selected_list, status_filter=selected_status, important_filter=selected_important, recurrence_filter=selected_recurrence, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-reset">
+                                                Виконано
+                                                {% if sort_by == 'is_completed' %}
+                                                    {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
+                                                {% endif %}
+                                            </a>
+                                        </th>
+                                        <th>
+                                            {% if sort_by == 'title' %}
+                                                {% set next_order_title = 'asc' if sort_order == 'desc' else 'desc' %}
+                                            {% else %}
+                                                {% set next_order_title = 'asc' %}
+                                            {% endif %}
+                                            <a href="{{ url_for('todo', filter='all', sort_by='title', sort_order=next_order_title, search=selected_search, list_filter=selected_list, status_filter=selected_status, important_filter=selected_important, recurrence_filter=selected_recurrence, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-reset">
+                                                Назва
+                                                {% if sort_by == 'title' %}
+                                                    {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
+                                                {% endif %}
+                                            </a>
+                                        </th>
+                                        <th style="width: 150px;">
+                                            {% if sort_by == 'due_date' %}
+                                                {% set next_order_date = 'asc' if sort_order == 'desc' else 'desc' %}
+                                            {% else %}
+                                                {% set next_order_date = 'asc' %}
+                                            {% endif %}
+                                            <a href="{{ url_for('todo', filter='all', sort_by='due_date', sort_order=next_order_date, search=selected_search, list_filter=selected_list, status_filter=selected_status, important_filter=selected_important, recurrence_filter=selected_recurrence, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-reset">
+                                                Термін
+                                                {% if sort_by == 'due_date' %}
+                                                    {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
+                                                {% endif %}
+                                            </a>
+                                        </th>
+                                        <th style="width: 150px;">
+                                            {% if sort_by == 'list_name' %}
+                                                {% set next_order_list = 'asc' if sort_order == 'desc' else 'desc' %}
+                                            {% else %}
+                                                {% set next_order_list = 'asc' %}
+                                            {% endif %}
+                                            <a href="{{ url_for('todo', filter='all', sort_by='list_name', sort_order=next_order_list, search=selected_search, list_filter=selected_list, status_filter=selected_status, important_filter=selected_important, recurrence_filter=selected_recurrence, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-reset">
+                                                Список
+                                                {% if sort_by == 'list_name' %}
+                                                    {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
+                                                {% endif %}
+                                            </a>
+                                        </th>
+                                        <th style="width: 100px;">Дії</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for task in grouped_tasks.later %}
+                                    <tr class="task-row {% if task.is_completed %}task-completed{% endif %} {% if task.is_overdue %}task-overdue{% endif %}" data-task-id="{{ task.id }}">
+                                        <td>
+                                            <input type="checkbox" class="form-check-input task-select" value="{{ task.id }}" name="task_ids">
+                                        </td>
+                                        <td>
+                                            <div class="form-check form-check-lg">
+                                                <input type="checkbox" class="form-check-input task-complete" id="task-complete-{{ task.id }}" data-task-id="{{ task.id }}" {% if task.is_completed %}checked{% endif %}>
+                                                <label class="form-check-label" for="task-complete-{{ task.id }}" style="cursor: pointer; font-weight: 500;">
+                                                    {% if task.is_completed %}
+                                                    <span class="text-success">Виконано</span>
+                                                    {% else %}
+                                                    <span class="text-muted">Виконати</span>
+                                                    {% endif %}
+                                                </label>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div class="d-flex align-items-center gap-2">
+                                                <form method="POST" action="{{ url_for('todo_task_toggle_important', task_id=task.id) }}" style="display:inline;">
+                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                                    <button type="submit" class="btn btn-sm btn-link p-0 task-important-btn" title="{% if task.is_important %}Прибрати з важливих{% else %}Додати до важливих{% endif %}">
+                                                        {% if task.is_important %}
+                                                        <i class="bi bi-star-fill text-warning" style="font-size: 1.2rem;"></i>
+                                                        {% else %}
+                                                        <i class="bi bi-star text-muted" style="font-size: 1.2rem;"></i>
+                                                        {% endif %}
+                                                    </button>
+                                                </form>
+                                                <div class="flex-grow-1">
+                                                    <a href="#" class="task-title-link" data-task-id="{{ task.id }}">
+                                                        {{ task.title }}
+                                                    </a>
+                                                    {% if task.notes %}
+                                                    <br><small class="text-muted">{{ task.notes[:100] }}{% if task.notes|length > 100 %}...{% endif %}</small>
+                                                    {% endif %}
+                                                    {% if task.recurrence_type %}
+                                                    <span class="badge bg-info ms-1" title="Повторюване завдання">
+                                                        <i class="bi bi-arrow-repeat"></i>
+                                                    </span>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            {% if task.due_date %}
+                                                {% set due_date_str = task.due_date[:10] if task.due_date|length > 10 else task.due_date %}
+                                                <span class="{% if task.is_overdue %}text-danger fw-bold{% endif %}">
+                                                    {{ due_date_str }}
+                                                </span>
+                                            {% else %}
+                                                <span class="text-muted">Без терміну</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if task.list_name %}
+                                            <span class="badge bg-secondary">{{ task.list_name }}</span>
+                                            {% else %}
+                                            <span class="text-muted">-</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-primary task-detail-btn" data-task-id="{{ task.id }}" title="Редагувати">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            {% if task.is_completed %}
+                                            <form method="POST" action="{{ url_for('todo_task_delete', task_id=task.id) }}" style="display:inline;" onsubmit="return confirm('Видалити завдання \"{{ task.title }}\"?');">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                                <button type="submit" class="btn btn-sm btn-outline-danger ms-1" title="Видалити">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </form>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    {% if grouped_tasks.no_date %}
+                    <div class="task-group mb-4">
+                        <h6 class="text-muted mb-3"><i class="bi bi-calendar-x"></i> Без терміну ({{ grouped_tasks.no_date|length }})</h6>
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 40px;">
+                                            <input type="checkbox" class="form-check-input task-group-select-all" data-group="no_date">
+                                        </th>
+                                        <th style="width: 120px;">
+                                            {% if sort_by == 'is_completed' %}
+                                                {% set next_order_status = 'asc' if sort_order == 'desc' else 'desc' %}
+                                            {% else %}
+                                                {% set next_order_status = 'asc' %}
+                                            {% endif %}
+                                            <a href="{{ url_for('todo', filter='all', sort_by='is_completed', sort_order=next_order_status, search=selected_search, list_filter=selected_list, status_filter=selected_status, important_filter=selected_important, recurrence_filter=selected_recurrence, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-reset">
+                                                Виконано
+                                                {% if sort_by == 'is_completed' %}
+                                                    {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
+                                                {% endif %}
+                                            </a>
+                                        </th>
+                                        <th>
+                                            {% if sort_by == 'title' %}
+                                                {% set next_order_title = 'asc' if sort_order == 'desc' else 'desc' %}
+                                            {% else %}
+                                                {% set next_order_title = 'asc' %}
+                                            {% endif %}
+                                            <a href="{{ url_for('todo', filter='all', sort_by='title', sort_order=next_order_title, search=selected_search, list_filter=selected_list, status_filter=selected_status, important_filter=selected_important, recurrence_filter=selected_recurrence, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-reset">
+                                                Назва
+                                                {% if sort_by == 'title' %}
+                                                    {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
+                                                {% endif %}
+                                            </a>
+                                        </th>
+                                        <th style="width: 150px;">
+                                            {% if sort_by == 'due_date' %}
+                                                {% set next_order_date = 'asc' if sort_order == 'desc' else 'desc' %}
+                                            {% else %}
+                                                {% set next_order_date = 'asc' %}
+                                            {% endif %}
+                                            <a href="{{ url_for('todo', filter='all', sort_by='due_date', sort_order=next_order_date, search=selected_search, list_filter=selected_list, status_filter=selected_status, important_filter=selected_important, recurrence_filter=selected_recurrence, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-reset">
+                                                Термін
+                                                {% if sort_by == 'due_date' %}
+                                                    {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
+                                                {% endif %}
+                                            </a>
+                                        </th>
+                                        <th style="width: 150px;">
+                                            {% if sort_by == 'list_name' %}
+                                                {% set next_order_list = 'asc' if sort_order == 'desc' else 'desc' %}
+                                            {% else %}
+                                                {% set next_order_list = 'asc' %}
+                                            {% endif %}
+                                            <a href="{{ url_for('todo', filter='all', sort_by='list_name', sort_order=next_order_list, search=selected_search, list_filter=selected_list, status_filter=selected_status, important_filter=selected_important, recurrence_filter=selected_recurrence, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-reset">
+                                                Список
+                                                {% if sort_by == 'list_name' %}
+                                                    {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
+                                                {% endif %}
+                                            </a>
+                                        </th>
+                                        <th style="width: 100px;">Дії</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for task in grouped_tasks.no_date %}
+                                    <tr class="task-row {% if task.is_completed %}task-completed{% endif %} {% if task.is_overdue %}task-overdue{% endif %}" data-task-id="{{ task.id }}">
+                                        <td>
+                                            <input type="checkbox" class="form-check-input task-select" value="{{ task.id }}" name="task_ids">
+                                        </td>
+                                        <td>
+                                            <div class="form-check form-check-lg">
+                                                <input type="checkbox" class="form-check-input task-complete" id="task-complete-{{ task.id }}" data-task-id="{{ task.id }}" {% if task.is_completed %}checked{% endif %}>
+                                                <label class="form-check-label" for="task-complete-{{ task.id }}" style="cursor: pointer; font-weight: 500;">
+                                                    {% if task.is_completed %}
+                                                    <span class="text-success">Виконано</span>
+                                                    {% else %}
+                                                    <span class="text-muted">Виконати</span>
+                                                    {% endif %}
+                                                </label>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div class="d-flex align-items-center gap-2">
+                                                <form method="POST" action="{{ url_for('todo_task_toggle_important', task_id=task.id) }}" style="display:inline;">
+                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                                    <button type="submit" class="btn btn-sm btn-link p-0 task-important-btn" title="{% if task.is_important %}Прибрати з важливих{% else %}Додати до важливих{% endif %}">
+                                                        {% if task.is_important %}
+                                                        <i class="bi bi-star-fill text-warning" style="font-size: 1.2rem;"></i>
+                                                        {% else %}
+                                                        <i class="bi bi-star text-muted" style="font-size: 1.2rem;"></i>
+                                                        {% endif %}
+                                                    </button>
+                                                </form>
+                                                <div class="flex-grow-1">
+                                                    <a href="#" class="task-title-link" data-task-id="{{ task.id }}">
+                                                        {{ task.title }}
+                                                    </a>
+                                                    {% if task.notes %}
+                                                    <br><small class="text-muted">{{ task.notes[:100] }}{% if task.notes|length > 100 %}...{% endif %}</small>
+                                                    {% endif %}
+                                                    {% if task.recurrence_type %}
+                                                    <span class="badge bg-info ms-1" title="Повторюване завдання">
+                                                        <i class="bi bi-arrow-repeat"></i>
+                                                    </span>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            {% if task.due_date %}
+                                                {% set due_date_str = task.due_date[:10] if task.due_date|length > 10 else task.due_date %}
+                                                <span class="{% if task.is_overdue %}text-danger fw-bold{% endif %}">
+                                                    {{ due_date_str }}
+                                                </span>
+                                            {% else %}
+                                                <span class="text-muted">Без терміну</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if task.list_name %}
+                                            <span class="badge bg-secondary">{{ task.list_name }}</span>
+                                            {% else %}
+                                            <span class="text-muted">-</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-primary task-detail-btn" data-task-id="{{ task.id }}" title="Редагувати">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            {% if task.is_completed %}
+                                            <form method="POST" action="{{ url_for('todo_task_delete', task_id=task.id) }}" style="display:inline;" onsubmit="return confirm('Видалити завдання \"{{ task.title }}\"?');">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                                <button type="submit" class="btn btn-sm btn-outline-danger ms-1" title="Видалити">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </form>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    {% if not grouped_tasks.today and not grouped_tasks.this_week and not grouped_tasks.later and not grouped_tasks.no_date %}
+                    <p class="text-muted text-center py-4">Завдань поки немає</p>
+                    {% endif %}
+                {% else %}
+                    {# Поточна логіка для інших фільтрів #}
+                    {% if tasks %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th style="width: 40px;">
+                                        <input type="checkbox" id="selectAll" class="form-check-input">
+                                    </th>
+                                    <th style="width: 120px;">
+                                        {% if filter_type == 'all' %}
+                                        {% if sort_by == 'is_completed' %}
+                                            {% set next_order_status = 'asc' if sort_order == 'desc' else 'desc' %}
+                                        {% else %}
+                                            {% set next_order_status = 'asc' %}
+                                        {% endif %}
+                                        <a href="{{ url_for('todo', filter='all', sort_by='is_completed', sort_order=next_order_status, search=selected_search, list_filter=selected_list, status_filter=selected_status, important_filter=selected_important, recurrence_filter=selected_recurrence, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-reset">
+                                            Виконано
+                                            {% if sort_by == 'is_completed' %}
+                                                {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
+                                            {% endif %}
+                                        </a>
+                                        {% else %}
+                                        Виконано
+                                        {% endif %}
+                                    </th>
+                                    <th>
+                                        {% if filter_type == 'all' %}
+                                        {% if sort_by == 'title' %}
+                                            {% set next_order_title = 'asc' if sort_order == 'desc' else 'desc' %}
+                                        {% else %}
+                                            {% set next_order_title = 'asc' %}
+                                        {% endif %}
+                                        <a href="{{ url_for('todo', filter='all', sort_by='title', sort_order=next_order_title, search=selected_search, list_filter=selected_list, status_filter=selected_status, important_filter=selected_important, recurrence_filter=selected_recurrence, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-reset">
+                                            Назва
+                                            {% if sort_by == 'title' %}
+                                                {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
+                                            {% endif %}
+                                        </a>
+                                        {% else %}
+                                        Назва
+                                        {% endif %}
+                                    </th>
+                                    <th style="width: 150px;">
+                                        {% if filter_type == 'all' %}
+                                        {% if sort_by == 'due_date' %}
+                                            {% set next_order_date = 'asc' if sort_order == 'desc' else 'desc' %}
+                                        {% else %}
+                                            {% set next_order_date = 'asc' %}
+                                        {% endif %}
+                                        <a href="{{ url_for('todo', filter='all', sort_by='due_date', sort_order=next_order_date, search=selected_search, list_filter=selected_list, status_filter=selected_status, important_filter=selected_important, recurrence_filter=selected_recurrence, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-reset">
+                                            Термін
+                                            {% if sort_by == 'due_date' %}
+                                                {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
+                                            {% endif %}
+                                        </a>
+                                        {% else %}
+                                        Термін
+                                        {% endif %}
+                                    </th>
+                                    <th style="width: 150px;">
+                                        {% if filter_type == 'all' %}
+                                        {% if sort_by == 'list_name' %}
+                                            {% set next_order_list = 'asc' if sort_order == 'desc' else 'desc' %}
+                                        {% else %}
+                                            {% set next_order_list = 'asc' %}
+                                        {% endif %}
+                                        <a href="{{ url_for('todo', filter='all', sort_by='list_name', sort_order=next_order_list, search=selected_search, list_filter=selected_list, status_filter=selected_status, important_filter=selected_important, recurrence_filter=selected_recurrence, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-reset">
+                                            Список
+                                            {% if sort_by == 'list_name' %}
+                                                {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
+                                            {% endif %}
+                                        </a>
+                                        {% else %}
+                                        Список
+                                        {% endif %}
+                                    </th>
+                                    <th style="width: 100px;">Дії</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tasksTableBody">
+                                {% for task in tasks %}
+                                <tr class="task-row {% if task.is_completed %}task-completed{% endif %} {% if task.is_overdue %}task-overdue{% endif %}" data-task-id="{{ task.id }}">
+                                    <td>
+                                        <input type="checkbox" class="form-check-input task-select" value="{{ task.id }}" name="task_ids">
+                                    </td>
+                                    <td>
+                                        <div class="form-check form-check-lg">
+                                            <input type="checkbox" class="form-check-input task-complete" id="task-complete-{{ task.id }}" data-task-id="{{ task.id }}" {% if task.is_completed %}checked{% endif %}>
+                                            <label class="form-check-label" for="task-complete-{{ task.id }}" style="cursor: pointer; font-weight: 500;">
+                                                {% if task.is_completed %}
+                                                <span class="text-success">Виконано</span>
+                                                {% else %}
+                                                <span class="text-muted">Виконати</span>
+                                                {% endif %}
+                                            </label>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <form method="POST" action="{{ url_for('todo_task_toggle_important', task_id=task.id) }}" style="display:inline;">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                                <button type="submit" class="btn btn-sm btn-link p-0 task-important-btn" title="{% if task.is_important %}Прибрати з важливих{% else %}Додати до важливих{% endif %}">
+                                                    {% if task.is_important %}
+                                                    <i class="bi bi-star-fill text-warning" style="font-size: 1.2rem;"></i>
+                                                    {% else %}
+                                                    <i class="bi bi-star text-muted" style="font-size: 1.2rem;"></i>
+                                                    {% endif %}
+                                                </button>
+                                            </form>
+                                            <div class="flex-grow-1">
+                                                <a href="#" class="task-title-link" data-task-id="{{ task.id }}">
+                                                    {{ task.title }}
+                                                </a>
+                                                {% if task.notes %}
+                                                <br><small class="text-muted">{{ task.notes[:100] }}{% if task.notes|length > 100 %}...{% endif %}</small>
+                                                {% endif %}
+                                                {% if task.recurrence_type %}
+                                                <span class="badge bg-info ms-1" title="Повторюване завдання">
+                                                    <i class="bi bi-arrow-repeat"></i>
+                                                </span>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        {% if task.due_date %}
+                                            {% set due_date_str = task.due_date[:10] if task.due_date|length > 10 else task.due_date %}
+                                            <span class="{% if task.is_overdue %}text-danger fw-bold{% endif %}">
+                                                {{ due_date_str }}
+                                            </span>
+                                        {% else %}
+                                            <span class="text-muted">Без терміну</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if task.list_name %}
+                                        <span class="badge bg-secondary">{{ task.list_name }}</span>
+                                        {% else %}
+                                        <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-primary task-detail-btn" data-task-id="{{ task.id }}" title="Редагувати">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        {% if task.is_completed %}
+                                        <form method="POST" action="{{ url_for('todo_task_delete', task_id=task.id) }}" style="display:inline;" onsubmit="return confirm('Видалити завдання \"{{ task.title }}\"?');">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                            <button type="submit" class="btn btn-sm btn-outline-danger ms-1" title="Видалити">
+                                                <i class="bi bi-trash"></i>
                                             </button>
                                         </form>
-                                        <div class="flex-grow-1">
-                                            <a href="#" class="task-title-link" data-task-id="{{ task.id }}">
-                                                {{ task.title }}
-                                            </a>
-                                            {% if task.notes %}
-                                            <br><small class="text-muted">{{ task.notes[:100] }}{% if task.notes|length > 100 %}...{% endif %}</small>
-                                            {% endif %}
-                                            {% if task.recurrence_type %}
-                                            <span class="badge bg-info ms-1" title="Повторюване завдання">
-                                                <i class="bi bi-arrow-repeat"></i>
-                                            </span>
-                                            {% endif %}
-                                        </div>
-                                    </div>
-                                </td>
-                                <td>
-                                    {% if task.due_date %}
-                                        {% set due_date_str = task.due_date[:10] if task.due_date|length > 10 else task.due_date %}
-                                        <span class="{% if task.is_overdue %}text-danger fw-bold{% endif %}">
-                                            {{ due_date_str }}
-                                        </span>
-                                    {% else %}
-                                        <span class="text-muted">Без терміну</span>
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    {% if task.list_name %}
-                                    <span class="badge bg-secondary">{{ task.list_name }}</span>
-                                    {% else %}
-                                    <span class="text-muted">-</span>
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    <button class="btn btn-sm btn-outline-primary task-detail-btn" data-task-id="{{ task.id }}" title="Редагувати">
-                                        <i class="bi bi-pencil"></i>
-                                    </button>
-                                    {% if task.is_completed %}
-                                    <form method="POST" action="{{ url_for('todo_task_delete', task_id=task.id) }}" style="display:inline;" onsubmit="return confirm('Видалити завдання \"{{ task.title }}\"?');">
-                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                        <button type="submit" class="btn btn-sm btn-outline-danger ms-1" title="Видалити">
-                                            <i class="bi bi-trash"></i>
-                                        </button>
-                                    </form>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-                {% else %}
-                <p class="text-muted text-center py-4">Завдань поки немає</p>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted text-center py-4">Завдань поки немає</p>
+                    {% endif %}
                 {% endif %}
             </div>
         </div>

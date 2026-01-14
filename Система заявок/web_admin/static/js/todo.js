@@ -46,6 +46,21 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
+    // Вибір всіх в групах задач
+    document.querySelectorAll('.task-group-select-all').forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            const group = this.dataset.group;
+            const groupTable = this.closest('.task-group').querySelector('table');
+            if (groupTable) {
+                const groupCheckboxes = groupTable.querySelectorAll('.task-select');
+                groupCheckboxes.forEach(cb => {
+                    cb.checked = this.checked;
+                });
+            }
+            updateSelectedCount();
+        });
+    });
+    
     // Вибір всіх невизначених задач
     const undefinedSelectAll = document.querySelector('.undefined-select-all');
     const undefinedTaskSelects = document.querySelectorAll('.undefined-task-select');

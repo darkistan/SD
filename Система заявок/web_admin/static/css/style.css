@@ -8,3 +8,58 @@ body {
     padding: 0.5rem 1rem;
 }
 
+/* Collapse functionality */
+.collapse-toggle {
+    cursor: pointer;
+    transition: transform 0.3s ease;
+    border: none;
+    background: none;
+    color: var(--bs-body-color);
+    font-size: 0.875rem;
+}
+
+.card-header .collapse-toggle {
+    color: var(--bs-body-color);
+}
+
+.card-header:not(.bg-primary):not(.bg-dark):not(.bg-secondary) .collapse-toggle {
+    color: var(--bs-body-color);
+}
+
+.card-header:not(.bg-primary):not(.bg-dark):not(.bg-secondary) .collapse-toggle:hover {
+    color: var(--bs-primary);
+}
+
+.collapse-toggle:hover {
+    color: var(--bs-primary);
+}
+
+.collapse-icon {
+    transition: transform 0.3s ease;
+    display: inline-block;
+}
+
+.collapse-toggle[aria-expanded="false"] .collapse-icon {
+    transform: rotate(-90deg);
+}
+
+.collapse-toggle[aria-expanded="true"] .collapse-icon {
+    transform: rotate(0deg);
+}
+
+#tickets-filters-content.collapse:not(.show) {
+    display: none;
+}
+
+/* Стиль для кнопки collapse в заголовку картки з темним фоном */
+.card-header.bg-primary .collapse-toggle,
+.card-header.bg-dark .collapse-toggle,
+.card-header.bg-secondary .collapse-toggle {
+    color: var(--bs-white);
+}
+
+.card-header.bg-primary .collapse-toggle:hover,
+.card-header.bg-dark .collapse-toggle:hover,
+.card-header.bg-secondary .collapse-toggle:hover {
+    color: var(--bs-light);
+}

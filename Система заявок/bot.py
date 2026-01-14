@@ -43,6 +43,9 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 # Глобальні змінні для зберігання стану створення заявки
 ticket_creation_state: Dict[int, Dict[str, Any]] = {}
 
+# Глобальні змінні для зберігання стану створення задачі
+task_creation_state: Dict[int, Dict[str, Any]] = {}
+
 # Глобальна змінна для зберігання активного чату для користувача
 # Формат: {user_id: ticket_id}
 chat_active_for_user: Dict[int, int] = {}
@@ -80,6 +83,14 @@ def create_menu_keyboard(user_id: int) -> InlineKeyboardMarkup:
         # Авторизований користувач
         buttons.append([InlineKeyboardButton("➕ Створити заявку", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "new_ticket"))])
         buttons.append([InlineKeyboardButton("📋 Мої заявки", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "my_tickets"))])
+        
+        # Додаємо кнопки для задач, якщо оповіщення увімкнені
+        with get_session() as session:
+            user = session.query(User).filter(User.user_id == user_id).first()
+            if user and user.notifications_enabled:
+                buttons.append([InlineKeyboardButton("📝 Створити задачу", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "new_task"))])
+                buttons.append([InlineKeyboardButton("📅 Задачі на сьогодні", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "tasks_today"))])
+                buttons.append([InlineKeyboardButton("📆 Задачі на цьому тижні", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "tasks_week"))])
     else:
         # Неавторизований користувач
         buttons.append([InlineKeyboardButton("🔐 Запросити доступ", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "request_access"))])
@@ -483,6 +494,34 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         if user_id in ticket_creation_state:
             del ticket_creation_state[user_id]
         await query.edit_message_text("❌ Створення заявки скасовано.")
+    elif callback_data == "new_task":
+        await new_task_command(update, context)
+    elif callback_data == "tasks_today":
+        await show_tasks_today(update, context, user_id)
+    elif callback_data == "tasks_week":
+        await show_tasks_week(update, context, user_id)
+    elif callback_data.startswith("task_list:"):
+        list_name = callback_data.split(":", 1)[1]
+        if list_name == "none":
+            list_name = None
+        await handle_task_list_selection(update, context, user_id, list_name)
+    elif callback_data == "skip_task_notes":
+        if user_id in task_creation_state:
+            task_creation_state[user_id]['notes'] = None
+            task_creation_state[user_id]['step'] = 'due_date'
+            message_text = (
+                "📅 <b>Введіть дату виконання</b>\n\n"
+                "Формат: ДД.ММ.РРРР\n"
+                "Або: сьогодні, завтра, післязавтра"
+            )
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("❌ Скасувати", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cancel_task"))]
+            ])
+            await query.edit_message_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+    elif callback_data == "cancel_task":
+        if user_id in task_creation_state:
+            del task_creation_state[user_id]
+        await query.edit_message_text("❌ Створення задачі скасовано.")
 
 
 async def handle_ticket_type_selection(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, ticket_type: str) -> None:
@@ -892,6 +931,384 @@ async def create_ticket_from_state(update: Update, context: ContextTypes.DEFAULT
             del ticket_creation_state[user_id]
 
 
+# ==================== Функції для роботи з задачами ====================
+
+async def new_task_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Команда створення нової задачі"""
+    user_id = update.effective_user.id if update.effective_user else update.callback_query.from_user.id
+    
+    if not auth_manager.is_user_allowed(user_id):
+        logger.log_unauthorized_access_attempt(user_id, "/new_task")
+        if update.message:
+            await update.message.reply_text("❌ У вас немає доступу до системи.")
+        elif update.callback_query:
+            await update.callback_query.edit_message_text("❌ У вас немає доступу до системи.")
+        return
+    
+    # Перевіряємо, чи увімкнені оповіщення
+    with get_session() as session:
+        user = session.query(User).filter(User.user_id == user_id).first()
+        if not user or not user.notifications_enabled:
+            error_msg = "❌ Функціонал задач доступний тільки для користувачів з увімкненими оповіщеннями."
+            if update.message:
+                await update.message.reply_text(error_msg)
+            elif update.callback_query:
+                await update.callback_query.edit_message_text(error_msg)
+            return
+    
+    # Починаємо процес створення задачі
+    task_creation_state[user_id] = {
+        'step': 'title',
+        'title': None,
+        'notes': None,
+        'due_date': None,
+        'list_name': None
+    }
+    
+    message_text = (
+        "📝 <b>Створення нової задачі</b>\n\n"
+        "Введіть назву задачі:"
+    )
+    
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("❌ Скасувати", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cancel_task"))]
+    ])
+    
+    if update.message:
+        await update.message.reply_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+    elif update.callback_query:
+        await update.callback_query.edit_message_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+
+
+async def handle_task_title_input(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, title: str) -> None:
+    """Обробка введення назви задачі"""
+    if user_id not in task_creation_state:
+        return
+    
+    if not title or not title.strip():
+        await update.message.reply_text("❌ Назва задачі не може бути порожньою. Введіть назву:")
+        return
+    
+    task_creation_state[user_id]['title'] = title.strip()
+    task_creation_state[user_id]['step'] = 'notes'
+    
+    message_text = (
+        "📝 <b>Введіть нотатки</b>\n\n"
+        "Опишіть деталі задачі (або відправте /skip щоб пропустити):"
+    )
+    
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("⏭️ Пропустити", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "skip_task_notes"))],
+        [InlineKeyboardButton("❌ Скасувати", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cancel_task"))]
+    ])
+    
+    await update.message.reply_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+
+
+async def handle_task_notes_input(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, notes: str) -> None:
+    """Обробка введення нотаток задачі"""
+    if user_id not in task_creation_state:
+        return
+    
+    task_creation_state[user_id]['notes'] = notes.strip() if notes.strip() else None
+    task_creation_state[user_id]['step'] = 'due_date'
+    
+    message_text = (
+        "📅 <b>Введіть дату виконання</b>\n\n"
+        "Формат: ДД.ММ.РРРР\n"
+        "Або: сьогодні, завтра, післязавтра"
+    )
+    
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("❌ Скасувати", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cancel_task"))]
+    ])
+    
+    await update.message.reply_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+
+
+def parse_date_input(date_str: str) -> Optional[datetime]:
+    """Парсинг дати з рядка"""
+    date_str = date_str.strip().lower()
+    today = datetime.now().date()
+    
+    # Спеціальні значення
+    if date_str == "сьогодні":
+        return datetime.combine(today, datetime.min.time())
+    elif date_str == "завтра":
+        return datetime.combine(today + timedelta(days=1), datetime.min.time())
+    elif date_str == "післязавтра":
+        return datetime.combine(today + timedelta(days=2), datetime.min.time())
+    
+    # Формат ДД.ММ.РРРР
+    try:
+        date_obj = datetime.strptime(date_str, '%d.%m.%Y')
+        return date_obj
+    except ValueError:
+        # Спробуємо формат РРРР-ММ-ДД
+        try:
+            date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+            return date_obj
+        except ValueError:
+            return None
+
+
+async def handle_task_date_input(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, date_str: str) -> None:
+    """Обробка введення дати задачі"""
+    if user_id not in task_creation_state:
+        return
+    
+    due_date = parse_date_input(date_str)
+    if not due_date:
+        await update.message.reply_text(
+            "❌ Невірний формат дати.\n\n"
+            "Введіть дату у форматі ДД.ММ.РРРР\n"
+            "Або: сьогодні, завтра, післязавтра"
+        )
+        return
+    
+    task_creation_state[user_id]['due_date'] = due_date
+    task_creation_state[user_id]['step'] = 'list'
+    
+    # Отримуємо всі списки
+    task_manager = get_task_manager()
+    all_lists = task_manager.get_all_lists()
+    
+    message_text = "📋 <b>Виберіть список</b>\n\nОберіть список для задачі:"
+    
+    keyboard_buttons = []
+    
+    # Додаємо кнопки зі списками (максимум 8 на рядок для кращого відображення)
+    if all_lists:
+        for i in range(0, len(all_lists), 2):
+            row = []
+            for j in range(2):
+                if i + j < len(all_lists):
+                    list_name = all_lists[i + j]
+                    row.append(InlineKeyboardButton(
+                        list_name,
+                        callback_data=csrf_manager.add_csrf_to_callback_data(user_id, f"task_list:{list_name}")
+                    ))
+            if row:
+                keyboard_buttons.append(row)
+    
+    # Кнопка "Без списку"
+    keyboard_buttons.append([InlineKeyboardButton(
+        "Без списку",
+        callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "task_list:none")
+    )])
+    
+    # Кнопка "Скасувати"
+    keyboard_buttons.append([InlineKeyboardButton(
+        "❌ Скасувати",
+        callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cancel_task")
+    )])
+    
+    keyboard = InlineKeyboardMarkup(keyboard_buttons)
+    
+    await update.message.reply_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+
+
+async def handle_task_list_selection(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, list_name: Optional[str]) -> None:
+    """Обробка вибору списку задачі"""
+    if user_id not in task_creation_state:
+        await update.callback_query.edit_message_text("❌ Помилка. Почніть спочатку.")
+        return
+    
+    state = task_creation_state[user_id]
+    
+    # Зберігаємо вибраний список
+    state['list_name'] = list_name
+    
+    try:
+        task_manager = get_task_manager()
+        task_id = task_manager.create_task(
+            title=state['title'],
+            notes=state['notes'],
+            due_date=state['due_date'],
+            list_name=state['list_name'],
+            user_id=user_id
+        )
+        
+        if task_id:
+            # Форматуємо дату для відображення
+            due_date_str = state['due_date'].strftime('%d.%m.%Y') if state['due_date'] else 'Без терміну'
+            list_name_display = state['list_name'] if state['list_name'] else 'Без списку'
+            
+            message_text = (
+                f"✅ <b>Задачу створено!</b>\n\n"
+                f"📝 Назва: {state['title']}\n"
+            )
+            
+            if state['notes']:
+                message_text += f"📄 Нотатки: {state['notes']}\n"
+            
+            message_text += (
+                f"📅 Дата: {due_date_str}\n"
+                f"📋 Список: {list_name_display}\n\n"
+                f"ID задачі: <b>#{task_id}</b>"
+            )
+            
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("📝 Створити ще", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "new_task"))],
+                [InlineKeyboardButton("⬅️ Меню", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "menu"))]
+            ])
+            
+            await update.callback_query.edit_message_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+            
+            # Очищаємо стан
+            del task_creation_state[user_id]
+        else:
+            await update.callback_query.edit_message_text("❌ Помилка створення задачі. Спробуйте ще раз.")
+            if user_id in task_creation_state:
+                del task_creation_state[user_id]
+                
+    except Exception as e:
+        logger.log_error(f"Помилка створення задачі: {e}")
+        await update.callback_query.edit_message_text("❌ Помилка створення задачі. Зверніться до адміністратора.")
+        if user_id in task_creation_state:
+            del task_creation_state[user_id]
+
+
+async def show_tasks_today(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int) -> None:
+    """Показ задач на сьогодні"""
+    if not auth_manager.is_user_allowed(user_id):
+        await update.callback_query.edit_message_text("❌ У вас немає доступу до системи.")
+        return
+    
+    # Перевіряємо, чи увімкнені оповіщення
+    with get_session() as session:
+        user = session.query(User).filter(User.user_id == user_id).first()
+        if not user or not user.notifications_enabled:
+            await update.callback_query.edit_message_text("❌ Функціонал задач доступний тільки для користувачів з увімкненими оповіщеннями.")
+            return
+    
+    task_manager = get_task_manager()
+    tasks = task_manager.get_tasks_for_today()
+    
+    # Фільтруємо по користувачу (якщо потрібно)
+    # Поки що показуємо всі задачі на сьогодні
+    
+    if not tasks:
+        message_text = "📅 <b>Задачі на сьогодні</b>\n\nНа сьогодні задач немає."
+    else:
+        message_text = f"📅 <b>Задачі на сьогодні ({len(tasks)})</b>\n\n"
+        
+        for task in tasks:
+            status_icon = "✅" if task.get('is_completed') else "⏳"
+            message_text += f"{status_icon} <b>{task.get('title', 'Без назви')}</b>\n"
+            
+            if task.get('notes'):
+                notes = task['notes'][:100] + "..." if len(task.get('notes', '')) > 100 else task['notes']
+                message_text += f"📝 {notes}\n"
+            
+            if task.get('due_date'):
+                due_date_str = task['due_date'][:10] if len(task.get('due_date', '')) > 10 else task['due_date']
+                try:
+                    date_obj = datetime.strptime(due_date_str, '%Y-%m-%d')
+                    due_date_formatted = date_obj.strftime('%d.%m.%Y')
+                except:
+                    due_date_formatted = due_date_str
+                message_text += f"📆 {due_date_formatted}\n"
+            
+            if task.get('list_name'):
+                message_text += f"📋 {task['list_name']}\n"
+            
+            message_text += "\n"
+    
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("⬅️ Меню", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "menu"))]
+    ])
+    
+    await update.callback_query.edit_message_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+
+
+async def show_tasks_week(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int) -> None:
+    """Показ задач на цьому тижні"""
+    if not auth_manager.is_user_allowed(user_id):
+        await update.callback_query.edit_message_text("❌ У вас немає доступу до системи.")
+        return
+    
+    # Перевіряємо, чи увімкнені оповіщення
+    with get_session() as session:
+        user = session.query(User).filter(User.user_id == user_id).first()
+        if not user or not user.notifications_enabled:
+            await update.callback_query.edit_message_text("❌ Функціонал задач доступний тільки для користувачів з увімкненими оповіщеннями.")
+            return
+    
+    # Визначаємо межі поточного тижня
+    today = datetime.now().date()
+    weekday = today.weekday()  # 0 = понеділок, 6 = неділя
+    monday = today - timedelta(days=weekday)
+    sunday = monday + timedelta(days=6)
+    
+    task_manager = get_task_manager()
+    
+    # Отримуємо всі невиконані задачі
+    filters = {'is_completed': False}
+    all_tasks = task_manager.get_all_tasks(filters)
+    
+    # Розбиваємо на групи
+    today_tasks = []
+    week_tasks = []
+    
+    for task in all_tasks:
+        if not task.get('due_date'):
+            continue
+        
+        due_date_str = task['due_date'][:10] if len(task.get('due_date', '')) > 10 else task['due_date']
+        try:
+            due_date = datetime.strptime(due_date_str, '%Y-%m-%d').date()
+            
+            if due_date == today:
+                today_tasks.append(task)
+            elif monday <= due_date <= sunday:
+                week_tasks.append(task)
+        except:
+            continue
+    
+    # Формуємо повідомлення
+    message_text = "📆 <b>Задачі на цьому тижні</b>\n\n"
+    
+    if today_tasks:
+        message_text += f"📅 <b>Сьогодні ({len(today_tasks)})</b>\n\n"
+        for task in today_tasks:
+            message_text += f"⏳ <b>{task.get('title', 'Без назви')}</b>\n"
+            if task.get('notes'):
+                notes = task['notes'][:80] + "..." if len(task.get('notes', '')) > 80 else task['notes']
+                message_text += f"📝 {notes}\n"
+            if task.get('list_name'):
+                message_text += f"📋 {task['list_name']}\n"
+            message_text += "\n"
+    
+    if week_tasks:
+        message_text += f"📆 <b>На цьому тижні ({len(week_tasks)})</b>\n\n"
+        for task in week_tasks:
+            message_text += f"⏳ <b>{task.get('title', 'Без назви')}</b>\n"
+            if task.get('due_date'):
+                due_date_str = task['due_date'][:10] if len(task.get('due_date', '')) > 10 else task['due_date']
+                try:
+                    date_obj = datetime.strptime(due_date_str, '%Y-%m-%d')
+                    due_date_formatted = date_obj.strftime('%d.%m.%Y')
+                except:
+                    due_date_formatted = due_date_str
+                message_text += f"📆 {due_date_formatted}\n"
+            if task.get('notes'):
+                notes = task['notes'][:80] + "..." if len(task.get('notes', '')) > 80 else task['notes']
+                message_text += f"📝 {notes}\n"
+            if task.get('list_name'):
+                message_text += f"📋 {task['list_name']}\n"
+            message_text += "\n"
+    
+    if not today_tasks and not week_tasks:
+        message_text += "На цьому тижні задач немає."
+    
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("⬅️ Меню", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "menu"))]
+    ])
+    
+    await update.callback_query.edit_message_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+
+
 def main():
     """Головна функція запуску бота"""
     if not TELEGRAM_BOT_TOKEN:
@@ -945,6 +1362,33 @@ def main():
                 # Чат закрито, видаляємо зі стану
                 del chat_active_for_user[user_id]
                 await update.message.reply_text("❌ Чат закрито. Ви не можете відправляти повідомлення.")
+            return
+        
+        # Обробка створення задачі
+        if user_id in task_creation_state:
+            state = task_creation_state[user_id]
+            step = state.get('step')
+            
+            if step == 'title':
+                await handle_task_title_input(update, context, user_id, text)
+            elif step == 'notes':
+                if text.lower() == '/skip':
+                    # Пропускаємо нотатки
+                    state['notes'] = None
+                    state['step'] = 'due_date'
+                    message_text = (
+                        "📅 <b>Введіть дату виконання</b>\n\n"
+                        "Формат: ДД.ММ.РРРР\n"
+                        "Або: сьогодні, завтра, післязавтра"
+                    )
+                    keyboard = InlineKeyboardMarkup([
+                        [InlineKeyboardButton("❌ Скасувати", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cancel_task"))]
+                    ])
+                    await update.message.reply_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+                else:
+                    await handle_task_notes_input(update, context, user_id, text)
+            elif step == 'due_date':
+                await handle_task_date_input(update, context, user_id, text)
             return
         
         # Обробка створення заявки

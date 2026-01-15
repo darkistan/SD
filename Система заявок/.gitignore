@@ -1,0 +1,34 @@
+# Резервні копії
+backups/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# База даних
+*.db
+*.db-shm
+*.db-wal
+
+# Логи
+logs.txt
+*.log
+
+# Конфігурація
+config.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

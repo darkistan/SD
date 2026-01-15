@@ -502,8 +502,60 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await show_tasks_week(update, context, user_id)
     elif callback_data.startswith("task_list:"):
         list_name = callback_data.split(":", 1)[1]
+        
+        # #region agent log
+        import json
+        try:
+            with open(r'd:\SD\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                log_entry = {
+                    "timestamp": datetime.now().isoformat(),
+                    "location": "bot.py:503",
+                    "message": "Task list callback received",
+                    "data": {
+                        "user_id": user_id,
+                        "callback_data": callback_data,
+                        "extracted_list_name": list_name,
+                        "has_task_state": user_id in task_creation_state,
+                        "has_list_map": user_id in task_creation_state and 'list_names_map' in task_creation_state[user_id] if user_id in task_creation_state else False,
+                        "hypothesisId": "A"
+                    },
+                    "sessionId": "debug-session",
+                    "runId": "run1"
+                }
+                f.write(json.dumps(log_entry, ensure_ascii=False) + '\n')
+        except Exception as e:
+            pass
+        # #endregion
+        
         if list_name == "none":
             list_name = None
+        else:
+            # Перевіряємо, чи є мапа обрізаних назв, і використовуємо повну назву
+            if user_id in task_creation_state and 'list_names_map' in task_creation_state[user_id]:
+                if list_name in task_creation_state[user_id]['list_names_map']:
+                    original_list_name = list_name
+                    list_name = task_creation_state[user_id]['list_names_map'][list_name]
+                    
+                    # #region agent log
+                    try:
+                        with open(r'd:\SD\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                            log_entry = {
+                                "timestamp": datetime.now().isoformat(),
+                                "location": "bot.py:525",
+                                "message": "List name restored from map",
+                                "data": {
+                                    "user_id": user_id,
+                                    "truncated_name": original_list_name,
+                                    "full_name": list_name,
+                                    "hypothesisId": "A"
+                                },
+                                "sessionId": "debug-session",
+                                "runId": "run1"
+                            }
+                            f.write(json.dumps(log_entry, ensure_ascii=False) + '\n')
+                    except Exception as e:
+                        pass
+                    # #endregion
         await handle_task_list_selection(update, context, user_id, list_name)
     elif callback_data == "skip_task_notes":
         if user_id in task_creation_state:
@@ -1084,9 +1136,88 @@ async def handle_task_date_input(update: Update, context: ContextTypes.DEFAULT_T
             for j in range(2):
                 if i + j < len(all_lists):
                     list_name = all_lists[i + j]
+                    # Формуємо callback_data з обмеженням довжини (Telegram має обмеження 64 байти)
+                    # task_list: (10) + |csrf: (6) + токен (~11) = ~27 байт, залишається ~37 байт для назви
+                    base_callback = f"task_list:{list_name}"
+                    callback_with_csrf = csrf_manager.add_csrf_to_callback_data(user_id, base_callback)
+                    
+                    # #region agent log
+                    import json
+                    try:
+                        with open(r'd:\SD\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                            log_entry = {
+                                "timestamp": datetime.now().isoformat(),
+                                "location": "bot.py:1089",
+                                "message": "Callback data length check",
+                                "data": {
+                                    "user_id": user_id,
+                                    "list_name": list_name,
+                                    "list_name_len": len(list_name),
+                                    "list_name_bytes": len(list_name.encode('utf-8')),
+                                    "base_callback": base_callback,
+                                    "base_callback_len": len(base_callback),
+                                    "base_callback_bytes": len(base_callback.encode('utf-8')),
+                                    "callback_with_csrf": callback_with_csrf,
+                                    "callback_with_csrf_len": len(callback_with_csrf),
+                                    "callback_with_csrf_bytes": len(callback_with_csrf.encode('utf-8')),
+                                    "hypothesisId": "A"
+                                },
+                                "sessionId": "debug-session",
+                                "runId": "run1"
+                            }
+                            f.write(json.dumps(log_entry, ensure_ascii=False) + '\n')
+                    except Exception as e:
+                        pass
+                    # #endregion
+                    
+                    # Якщо callback_data занадто довгий, обрізаємо назву списку
+                    MAX_CALLBACK_BYTES = 64
+                    if len(callback_with_csrf.encode('utf-8')) > MAX_CALLBACK_BYTES:
+                        # Обчислюємо максимальну довжину назви списку в байтах
+                        # task_list: (10) + |csrf: (6) + токен (~11) = ~27 байт
+                        max_list_name_bytes = MAX_CALLBACK_BYTES - 27
+                        # Обрізаємо назву списку до максимальної довжини
+                        list_name_bytes = list_name.encode('utf-8')
+                        if len(list_name_bytes) > max_list_name_bytes:
+                            # Обрізаємо по байтах, щоб не зламати UTF-8
+                            truncated_bytes = list_name_bytes[:max_list_name_bytes]
+                            # Знаходимо останній повний символ UTF-8
+                            while truncated_bytes and (truncated_bytes[-1] & 0xC0) == 0x80:
+                                truncated_bytes = truncated_bytes[:-1]
+                            list_name_truncated = truncated_bytes.decode('utf-8', errors='ignore')
+                            # Оновлюємо callback_data з обрізаною назвою
+                            base_callback = f"task_list:{list_name_truncated}"
+                            callback_with_csrf = csrf_manager.add_csrf_to_callback_data(user_id, base_callback)
+                            # Зберігаємо повну назву в стані для подальшого використання
+                            if 'list_names_map' not in task_creation_state[user_id]:
+                                task_creation_state[user_id]['list_names_map'] = {}
+                            task_creation_state[user_id]['list_names_map'][list_name_truncated] = list_name
+                            
+                            # #region agent log
+                            try:
+                                with open(r'd:\SD\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                                    log_entry = {
+                                        "timestamp": datetime.now().isoformat(),
+                                        "location": "bot.py:1125",
+                                        "message": "List name truncated",
+                                        "data": {
+                                            "user_id": user_id,
+                                            "original_name": list_name,
+                                            "truncated_name": list_name_truncated,
+                                            "final_callback_bytes": len(callback_with_csrf.encode('utf-8')),
+                                            "hypothesisId": "A"
+                                        },
+                                        "sessionId": "debug-session",
+                                        "runId": "run1"
+                                    }
+                                    f.write(json.dumps(log_entry, ensure_ascii=False) + '\n')
+                            except Exception as e:
+                                pass
+                            # #endregion
+                    
                     row.append(InlineKeyboardButton(
                         list_name,
-                        callback_data=csrf_manager.add_csrf_to_callback_data(user_id, f"task_list:{list_name}")
+                        callback_data=callback_with_csrf
                     ))
             if row:
                 keyboard_buttons.append(row)

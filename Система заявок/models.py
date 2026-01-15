@@ -409,3 +409,22 @@ class Timer(Base):
     def __repr__(self):
         return f"<Timer(id={self.id}, label='{self.label}', timer_type='{self.timer_type}', is_paused={self.is_paused})>"
 
+
+class BackupSettings(Base):
+    """Модель налаштувань резервного копіювання"""
+    __tablename__ = 'backup_settings'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    enabled = Column(Boolean, default=False, nullable=False)  # Чи увімкнено автоматичне резервне копіювання
+    schedule_type = Column(String(20), default='daily', nullable=False)  # 'daily', 'weekly', 'custom'
+    custom_interval_hours = Column(Integer, default=24, nullable=False)  # Інтервал у годинах для custom режиму
+    external_path = Column(String(500), nullable=True)  # Шлях до зовнішньої папки (опціонально)
+    retention_count = Column(Integer, default=5, nullable=False)  # Кількість резервних копій для збереження
+    last_backup_at = Column(DateTime, nullable=True)  # Час останнього резервного копіювання
+    next_backup_at = Column(DateTime, nullable=True)  # Час наступного запланованого резервного копіювання
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    
+    def __repr__(self):
+        return f"<BackupSettings(id={self.id}, enabled={self.enabled}, schedule_type='{self.schedule_type}')>"
+

@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from database import init_database, get_session
-from models import User, Company, Ticket, TicketItem, ActiveSession, Log, PendingRequest, Printer, CartridgeType, PrinterCartridgeCompatibility, Contractor, TicketStatus, Poll, PollOption, PollResponse, Announcement, AnnouncementRecipient, TicketChat, Task, Timer
+from models import User, Company, Ticket, TicketItem, ActiveSession, Log, PendingRequest, Printer, CartridgeType, PrinterCartridgeCompatibility, Contractor, TicketStatus, Poll, PollOption, PollResponse, Announcement, AnnouncementRecipient, TicketChat, Task, Timer, BackupSettings
 from ticket_manager import get_ticket_manager
 from printer_manager import get_printer_manager
 from pdf_report_manager import get_pdf_report_manager
@@ -29,6 +29,7 @@ from announcement_manager import get_announcement_manager
 from chat_manager import get_chat_manager
 from task_manager import get_task_manager
 from timer_manager import get_timer_manager
+from backup_manager import get_backup_manager
 from auth import auth_manager
 from logger import logger
 
@@ -2065,6 +2066,185 @@ def clear_old_logs():
     return redirect(url_for('logs'))
 
 
+@app.route('/backup')
+@admin_required
+def backup():
+    """Сторінка налаштувань резервного копіювання"""
+    try:
+        backup_manager = get_backup_manager()
+        backups = backup_manager.get_backup_list()
+        
+        with get_session() as session:
+            settings = session.query(BackupSettings).first()
+            if not settings:
+                # Створюємо налаштування за замовчуванням
+                settings = BackupSettings(
+                    enabled=False,
+                    schedule_type='daily',
+                    custom_interval_hours=24,
+                    retention_count=5
+                )
+                session.add(settings)
+                session.commit()
+            
+            # Завантажуємо всі атрибути всередині сесії, щоб уникнути DetachedInstanceError
+            _ = settings.id
+            _ = settings.enabled
+            _ = settings.schedule_type
+            _ = settings.custom_interval_hours
+            _ = settings.external_path
+            _ = settings.retention_count
+            _ = settings.last_backup_at
+            _ = settings.next_backup_at
+            
+            # Від'єднуємо об'єкт від сесії, щоб він міг використовуватися після закриття сесії
+            session.expunge(settings)
+        
+        return render_template('backup.html', 
+                             settings=settings,
+                             backups=backups)
+    except Exception as e:
+        logger.log_error(f"Помилка завантаження сторінки резервного копіювання: {e}")
+        flash('Помилка завантаження сторінки резервного копіювання.', 'danger')
+        return redirect(url_for('dashboard'))
+
+
+@app.route('/backup/create', methods=['POST'])
+@admin_required
+def backup_create():
+    """Створення резервної копії вручну"""
+    try:
+        backup_manager = get_backup_manager()
+        backup_path = backup_manager.create_backup()
+        
+        if backup_path:
+            flash('Резервну копію успішно створено.', 'success')
+        else:
+            flash('Помилка створення резервної копії.', 'danger')
+    except Exception as e:
+        logger.log_error(f"Помилка створення резервної копії: {e}")
+        flash('Помилка створення резервної копії.', 'danger')
+    
+    return redirect(url_for('backup'))
+
+
+@app.route('/backup/settings', methods=['POST'])
+@admin_required
+def backup_settings():
+    """Збереження налаштувань резервного копіювання"""
+    try:
+        enabled = request.form.get('enabled') == 'on'
+        schedule_type = request.form.get('schedule_type', 'daily')
+        custom_interval_hours = int(request.form.get('custom_interval_hours', 24))
+        external_path = request.form.get('external_path', '').strip() or None
+        retention_count = int(request.form.get('retention_count', 5))
+        
+        # Валідація
+        if custom_interval_hours < 1:
+            custom_interval_hours = 24
+        if retention_count < 1:
+            retention_count = 5
+        
+        # Валідація зовнішнього шляху
+        if external_path:
+            from pathlib import Path
+            external_path_obj = Path(external_path)
+            if not external_path_obj.exists() or not external_path_obj.is_dir():
+                flash('Зовнішня папка не існує або не є директорією.', 'danger')
+                return redirect(url_for('backup'))
+        
+        with get_session() as session:
+            settings = session.query(BackupSettings).first()
+            if not settings:
+                settings = BackupSettings()
+                session.add(settings)
+            
+            settings.enabled = enabled
+            settings.schedule_type = schedule_type
+            settings.custom_interval_hours = custom_interval_hours
+            settings.external_path = external_path
+            settings.retention_count = retention_count
+            
+            # Обчислюємо час наступного резервного копіювання
+            backup_manager = get_backup_manager()
+            settings.next_backup_at = backup_manager.calculate_next_backup_time(settings)
+            session.commit()
+        
+        # Перезапускаємо автоматичне резервне копіювання
+        backup_manager.start_auto_backup()
+        
+        flash('Налаштування резервного копіювання збережено.', 'success')
+    except Exception as e:
+        logger.log_error(f"Помилка збереження налаштувань резервного копіювання: {e}")
+        flash('Помилка збереження налаштувань.', 'danger')
+    
+    return redirect(url_for('backup'))
+
+
+@app.route('/backup/download/<filename>')
+@admin_required
+def backup_download(filename: str):
+    """Завантаження резервної копії"""
+    try:
+        backup_manager = get_backup_manager()
+        backups = backup_manager.get_backup_list()
+        
+        # Перевіряємо, чи файл існує в списку
+        backup_file = next((b for b in backups if b['filename'] == filename), None)
+        if not backup_file:
+            flash('Резервна копія не знайдена.', 'danger')
+            return redirect(url_for('backup'))
+        
+        from pathlib import Path
+        backup_path = Path(backup_file['path'])
+        if not backup_path.exists():
+            flash('Файл резервної копії не знайдено.', 'danger')
+            return redirect(url_for('backup'))
+        
+        return send_file(
+            backup_path,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/zip'
+        )
+    except Exception as e:
+        logger.log_error(f"Помилка завантаження резервної копії: {e}")
+        flash('Помилка завантаження резервної копії.', 'danger')
+        return redirect(url_for('backup'))
+
+
+@app.route('/backup/delete/<filename>', methods=['POST'])
+@admin_required
+def backup_delete(filename: str):
+    """Видалення резервної копії"""
+    try:
+        backup_manager = get_backup_manager()
+        success = backup_manager.delete_backup(filename)
+        
+        if success:
+            flash('Резервну копію успішно видалено.', 'success')
+        else:
+            flash('Помилка видалення резервної копії.', 'danger')
+    except Exception as e:
+        logger.log_error(f"Помилка видалення резервної копії: {e}")
+        flash('Помилка видалення резервної копії.', 'danger')
+    
+    return redirect(url_for('backup'))
+
+
+@app.route('/api/backup/list')
+@admin_required
+def backup_list_api():
+    """API для отримання списку резервних копій"""
+    try:
+        backup_manager = get_backup_manager()
+        backups = backup_manager.get_backup_list()
+        return jsonify(backups)
+    except Exception as e:
+        logger.log_error(f"Помилка отримання списку резервних копій: {e}")
+        return jsonify({'error': 'Помилка отримання списку'}), 500
+
+
 @app.route('/statuses')
 @admin_required
 def statuses():
@@ -3666,6 +3846,13 @@ def timer_delete(timer_id):
         logger.log_error(f"Помилка видалення таймера {timer_id}: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
 
+
+# Ініціалізація автоматичного резервного копіювання при старті
+try:
+    backup_manager = get_backup_manager()
+    backup_manager.start_auto_backup()
+except Exception as e:
+    logger.log_error(f"Помилка ініціалізації автоматичного резервного копіювання: {e}")
 
 if __name__ == '__main__':
     app.run(host=os.getenv('HOST', '127.0.0.1'), port=int(os.getenv('PORT', 5000)), debug=FLASK_DEBUG)

@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block title %}Резервне копіювання - Система заявок{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-12">
+        <h1><i class="bi bi-archive"></i> Резервне копіювання</h1>
+        <p class="text-muted">Налаштування та управління резервними копіями проекту</p>
+    </div>
+</div>
+
+<!-- Налаштування -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5><i class="bi bi-gear"></i> Налаштування резервного копіювання</h5>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('backup_settings') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            
+            <div class="mb-3">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" name="enabled" id="enabled" {% if settings.enabled %}checked{% endif %}>
+                    <label class="form-check-label" for="enabled">
+                        <strong>Увімкнути автоматичне резервне копіювання</strong>
+                    </label>
+                </div>
+            </div>
+            
+            <div class="mb-3">
+                <label class="form-label">Періодичність резервного копіювання</label>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="schedule_type" id="schedule_daily" value="daily" {% if settings.schedule_type == 'daily' %}checked{% endif %}>
+                    <label class="form-check-label" for="schedule_daily">
+                        Щодня (о 02:00)
+                    </label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="schedule_type" id="schedule_weekly" value="weekly" {% if settings.schedule_type == 'weekly' %}checked{% endif %}>
+                    <label class="form-check-label" for="schedule_weekly">
+                        Щотижня (понеділок о 02:00)
+                    </label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="schedule_type" id="schedule_custom" value="custom" {% if settings.schedule_type == 'custom' %}checked{% endif %}>
+                    <label class="form-check-label" for="schedule_custom">
+                        Налаштовуваний інтервал
+                    </label>
+                </div>
+            </div>
+            
+            <div class="mb-3" id="custom_interval_group" style="display: {% if settings.schedule_type == 'custom' %}block{% else %}none{% endif %};">
+                <label class="form-label" for="custom_interval_hours">Інтервал (години)</label>
+                <input type="number" class="form-control" id="custom_interval_hours" name="custom_interval_hours" 
+                       value="{{ settings.custom_interval_hours }}" min="1" required>
+                <small class="text-muted">Мінімальний інтервал: 1 година</small>
+            </div>
+            
+            <div class="mb-3">
+                <label class="form-label" for="external_path">Зовнішня папка для резервних копій (опціонально)</label>
+                <input type="text" class="form-control" id="external_path" name="external_path" 
+                       value="{{ settings.external_path or '' }}" placeholder="D:\Backups\System">
+                <small class="text-muted">Якщо вказано - резервні копії зберігаються в цій папці. Якщо не вказано - в каталозі проекту (backups/)</small>
+            </div>
+            
+            <div class="mb-3">
+                <label class="form-label" for="retention_count">Кількість резервних копій для збереження</label>
+                <input type="number" class="form-control" id="retention_count" name="retention_count" 
+                       value="{{ settings.retention_count }}" min="1" required>
+                <small class="text-muted">Старі резервні копії будуть автоматично видалятися</small>
+            </div>
+            
+            <button type="submit" class="btn btn-primary">
+                <i class="bi bi-save"></i> Зберегти налаштування
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Інформація про резервне копіювання -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5><i class="bi bi-info-circle"></i> Інформація</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <p><strong>Останнє резервне копіювання:</strong><br>
+                {% if settings.last_backup_at %}
+                    <span class="text-success">{{ settings.last_backup_at.strftime('%d.%m.%Y %H:%M:%S') }}</span>
+                {% else %}
+                    <span class="text-muted">Ще не виконувалося</span>
+                {% endif %}</p>
+            </div>
+            <div class="col-md-6">
+                <p><strong>Наступне резервне копіювання:</strong><br>
+                {% if settings.next_backup_at %}
+                    <span class="text-info">{{ settings.next_backup_at.strftime('%d.%m.%Y %H:%M:%S') }}</span>
+                {% else %}
+                    <span class="text-muted">Не заплановано</span>
+                {% endif %}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Створення резервної копії -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5><i class="bi bi-plus-circle"></i> Створити резервну копію</h5>
+    </div>
+    <div class="card-body">
+        <p class="text-muted">Створіть резервну копію зараз вручну. Резервна копія включає базу даних та файл конфігурації.</p>
+        <form method="POST" action="{{ url_for('backup_create') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <button type="submit" class="btn btn-success">
+                <i class="bi bi-download"></i> Створити резервну копію зараз
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Список резервних копій -->
+<div class="card">
+    <div class="card-header">
+        <h5><i class="bi bi-list-ul"></i> Наявні резервні копії</h5>
+    </div>
+    <div class="card-body">
+        {% if backups %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Назва файлу</th>
+                        <th>Дата створення</th>
+                        <th>Розмір</th>
+                        <th>Дії</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for backup in backups %}
+                    <tr>
+                        <td><code>{{ backup.filename }}</code></td>
+                        <td>{{ backup.created_at.strftime('%d.%m.%Y %H:%M:%S') }}</td>
+                        <td>{{ backup.size_mb }} МБ</td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <a href="{{ url_for('backup_download', filename=backup.filename) }}" class="btn btn-primary">
+                                    <i class="bi bi-download"></i> Завантажити
+                                </a>
+                                <button type="button" class="btn btn-danger" onclick="deleteBackup('{{ backup.filename }}')">
+                                    <i class="bi bi-trash"></i> Видалити
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted text-center py-4">Резервних копій поки немає</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Форма для видалення -->
+<form id="deleteForm" method="POST" style="display: none;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+</form>
+
+<script>
+function deleteBackup(filename) {
+    if (confirm('Ви впевнені, що хочете видалити резервну копію "' + filename + '"?')) {
+        const form = document.getElementById('deleteForm');
+        form.action = "{{ url_for('backup_delete', filename='') }}" + filename;
+        form.submit();
+    }
+}
+
+// Показуємо/приховуємо поле інтервалу залежно від вибраного типу
+document.querySelectorAll('input[name="schedule_type"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        const customGroup = document.getElementById('custom_interval_group');
+        if (this.value === 'custom') {
+            customGroup.style.display = 'block';
+            document.getElementById('custom_interval_hours').required = true;
+        } else {
+            customGroup.style.display = 'none';
+            document.getElementById('custom_interval_hours').required = false;
+        }
+    });
+});
+</script>
+{% endblock %}

@@ -116,6 +116,9 @@ class DatabaseManager:
             # Створюємо адміністратора за замовчуванням, якщо його немає
             self.create_default_admin()
             
+            # Створюємо налаштування резервного копіювання за замовчуванням
+            self.create_default_backup_settings()
+            
             return True
         except Exception as e:
             logger.log_error(f"Помилка створення таблиць БД: {e}")
@@ -175,6 +178,36 @@ class DatabaseManager:
                 logger.log_info("Створено адміністратора за замовчуванням (User ID: 1, пароль: admin123)")
         except Exception as e:
             logger.log_error(f"Помилка створення адміністратора за замовчуванням: {e}")
+    
+    def create_default_backup_settings(self):
+        """Створення налаштувань резервного копіювання за замовчуванням"""
+        try:
+            from models import BackupSettings
+            
+            # Перевіряємо чи існує таблиця backup_settings
+            inspector = inspect(self.engine)
+            if 'backup_settings' not in inspector.get_table_names():
+                return
+            
+            with self.SessionLocal() as session:
+                # Перевіряємо чи є налаштування
+                settings = session.query(BackupSettings).first()
+                if settings:
+                    return
+                
+                # Створюємо налаштування за замовчуванням
+                default_settings = BackupSettings(
+                    enabled=False,
+                    schedule_type='daily',
+                    custom_interval_hours=24,
+                    external_path=None,
+                    retention_count=5
+                )
+                session.add(default_settings)
+                session.commit()
+                logger.log_info("Створено налаштування резервного копіювання за замовчуванням")
+        except Exception as e:
+            logger.log_error(f"Помилка створення налаштувань резервного копіювання: {e}")
     
     def migrate_add_company_id_to_user(self):
         """Міграція: додавання колонки company_id до таблиці users"""

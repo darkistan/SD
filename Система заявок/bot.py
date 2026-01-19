@@ -574,6 +574,29 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         if user_id in task_creation_state:
             del task_creation_state[user_id]
         await query.edit_message_text("❌ Створення задачі скасовано.")
+    elif callback_data.startswith("complete_task:"):
+        # Обробка закриття задачі
+        task_id_str = callback_data.split(":", 1)[1]
+        try:
+            task_id = int(task_id_str)
+            await handle_task_completion(update, context, user_id, task_id)
+        except ValueError:
+            await query.answer("❌ Помилка: некоректний ID задачі", show_alert=True)
+    elif callback_data.startswith("complete_task_short:"):
+        # Обробка закриття задачі через короткий ID (якщо callback_data перевищує 64 байти)
+        short_id_str = callback_data.split(":", 1)[1]
+        try:
+            short_id = int(short_id_str)
+            if user_id in task_creation_state and 'task_completion_map' in task_creation_state[user_id]:
+                if short_id in task_creation_state[user_id]['task_completion_map']:
+                    task_id = task_creation_state[user_id]['task_completion_map'][short_id]
+                    await handle_task_completion(update, context, user_id, task_id)
+                else:
+                    await query.answer("❌ Помилка: задача не знайдена", show_alert=True)
+            else:
+                await query.answer("❌ Помилка: стан задачі не знайдено", show_alert=True)
+        except ValueError:
+            await query.answer("❌ Помилка: некоректний ID задачі", show_alert=True)
 
 
 async def handle_ticket_type_selection(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, ticket_type: str) -> None:
@@ -1321,12 +1344,18 @@ async def show_tasks_today(update: Update, context: ContextTypes.DEFAULT_TYPE, u
     
     if not tasks:
         message_text = "📅 <b>Задачі на сьогодні</b>\n\nНа сьогодні задач немає."
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("⬅️ Меню", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "menu"))]
+        ])
     else:
         message_text = f"📅 <b>Задачі на сьогодні ({len(tasks)})</b>\n\n"
         
+        keyboard_buttons = []
+        
         for task in tasks:
-            status_icon = "✅" if task.get('is_completed') else "⏳"
-            message_text += f"{status_icon} <b>{task.get('title', 'Без назви')}</b>\n"
+            # Всі задачі в get_tasks_for_today() вже невиконані, тому завжди показуємо ⏳
+            task_title = task.get('title', 'Без назви')
+            message_text += f"⏳ <b>{task_title}</b>\n"
             
             if task.get('notes'):
                 notes = task['notes'][:100] + "..." if len(task.get('notes', '')) > 100 else task['notes']
@@ -1345,10 +1374,30 @@ async def show_tasks_today(update: Update, context: ContextTypes.DEFAULT_TYPE, u
                 message_text += f"📋 {task['list_name']}\n"
             
             message_text += "\n"
-    
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("⬅️ Меню", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "menu"))]
-    ])
+            
+            # Додаємо кнопку закриття для кожної задачі
+            task_id = task.get('id')
+            if task_id:
+                callback_data = csrf_manager.add_csrf_to_callback_data(user_id, f"complete_task:{task_id}")
+                # Перевіряємо обмеження 64 байти (навряд чи буде проблема з task_id, але перевіримо)
+                MAX_CALLBACK_BYTES = 64
+                if len(callback_data.encode('utf-8')) > MAX_CALLBACK_BYTES:
+                    # Якщо перевищує, використовуємо мапу (але це малоймовірно для task_id)
+                    if user_id not in task_creation_state:
+                        task_creation_state[user_id] = {}
+                    if 'task_completion_map' not in task_creation_state[user_id]:
+                        task_creation_state[user_id]['task_completion_map'] = {}
+                    short_id = len(task_creation_state[user_id]['task_completion_map'])
+                    task_creation_state[user_id]['task_completion_map'][short_id] = task_id
+                    callback_data = csrf_manager.add_csrf_to_callback_data(user_id, f"complete_task_short:{short_id}")
+                
+                # Обмежуємо довжину назви кнопки для кращого відображення
+                button_text = f"✅ Закрити: {task_title[:30]}" if len(task_title) > 30 else f"✅ Закрити: {task_title}"
+                keyboard_buttons.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+        
+        # Додаємо кнопку "Меню" внизу
+        keyboard_buttons.append([InlineKeyboardButton("⬅️ Меню", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "menu"))])
+        keyboard = InlineKeyboardMarkup(keyboard_buttons)
     
     await update.callback_query.edit_message_text(message_text, reply_markup=keyboard, parse_mode='HTML')
 
@@ -1400,21 +1449,27 @@ async def show_tasks_week(update: Update, context: ContextTypes.DEFAULT_TYPE, us
     # Формуємо повідомлення
     message_text = "📆 <b>Задачі на цьому тижні</b>\n\n"
     
+    keyboard_buttons = []
+    all_tasks_for_buttons = []  # Зберігаємо всі задачі для кнопок
+    
     if today_tasks:
         message_text += f"📅 <b>Сьогодні ({len(today_tasks)})</b>\n\n"
         for task in today_tasks:
-            message_text += f"⏳ <b>{task.get('title', 'Без назви')}</b>\n"
+            task_title = task.get('title', 'Без назви')
+            message_text += f"⏳ <b>{task_title}</b>\n"
             if task.get('notes'):
                 notes = task['notes'][:80] + "..." if len(task.get('notes', '')) > 80 else task['notes']
                 message_text += f"📝 {notes}\n"
             if task.get('list_name'):
                 message_text += f"📋 {task['list_name']}\n"
             message_text += "\n"
+            all_tasks_for_buttons.append(task)
     
     if week_tasks:
         message_text += f"📆 <b>На цьому тижні ({len(week_tasks)})</b>\n\n"
         for task in week_tasks:
-            message_text += f"⏳ <b>{task.get('title', 'Без назви')}</b>\n"
+            task_title = task.get('title', 'Без назви')
+            message_text += f"⏳ <b>{task_title}</b>\n"
             if task.get('due_date'):
                 due_date_str = task['due_date'][:10] if len(task.get('due_date', '')) > 10 else task['due_date']
                 try:
@@ -1429,15 +1484,91 @@ async def show_tasks_week(update: Update, context: ContextTypes.DEFAULT_TYPE, us
             if task.get('list_name'):
                 message_text += f"📋 {task['list_name']}\n"
             message_text += "\n"
+            all_tasks_for_buttons.append(task)
     
     if not today_tasks and not week_tasks:
         message_text += "На цьому тижні задач немає."
-    
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("⬅️ Меню", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "menu"))]
-    ])
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("⬅️ Меню", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "menu"))]
+        ])
+    else:
+        # Додаємо кнопки закриття для всіх задач
+        for task in all_tasks_for_buttons:
+            task_id = task.get('id')
+            if task_id:
+                callback_data = csrf_manager.add_csrf_to_callback_data(user_id, f"complete_task:{task_id}")
+                # Перевіряємо обмеження 64 байти
+                MAX_CALLBACK_BYTES = 64
+                if len(callback_data.encode('utf-8')) > MAX_CALLBACK_BYTES:
+                    # Якщо перевищує, використовуємо мапу
+                    if user_id not in task_creation_state:
+                        task_creation_state[user_id] = {}
+                    if 'task_completion_map' not in task_creation_state[user_id]:
+                        task_creation_state[user_id]['task_completion_map'] = {}
+                    short_id = len(task_creation_state[user_id]['task_completion_map'])
+                    task_creation_state[user_id]['task_completion_map'][short_id] = task_id
+                    callback_data = csrf_manager.add_csrf_to_callback_data(user_id, f"complete_task_short:{short_id}")
+                
+                # Обмежуємо довжину назви кнопки
+                task_title = task.get('title', 'Без назви')
+                button_text = f"✅ Закрити: {task_title[:30]}" if len(task_title) > 30 else f"✅ Закрити: {task_title}"
+                keyboard_buttons.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+        
+        # Додаємо кнопку "Меню" внизу
+        keyboard_buttons.append([InlineKeyboardButton("⬅️ Меню", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "menu"))])
+        keyboard = InlineKeyboardMarkup(keyboard_buttons)
     
     await update.callback_query.edit_message_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+
+
+async def handle_task_completion(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, task_id: int) -> None:
+    """Обробка закриття задачі"""
+    if not auth_manager.is_user_allowed(user_id):
+        await update.callback_query.answer("❌ У вас немає доступу до системи.", show_alert=True)
+        return
+    
+    # Перевіряємо, чи увімкнені оповіщення
+    with get_session() as session:
+        user = session.query(User).filter(User.user_id == user_id).first()
+        if not user or not user.notifications_enabled:
+            await update.callback_query.answer("❌ Функціонал задач доступний тільки для користувачів з увімкненими оповіщеннями.", show_alert=True)
+            return
+    
+    task_manager = get_task_manager()
+    
+    # Отримуємо задачу для перевірки та отримання назви
+    task = task_manager.get_task(task_id)
+    if not task:
+        await update.callback_query.answer("❌ Задачу не знайдено", show_alert=True)
+        return
+    
+    # Перевіряємо, чи задача вже закрита
+    if task.get('is_completed'):
+        await update.callback_query.answer("✅ Задача вже закрита", show_alert=True)
+        return
+    
+    # Закриваємо задачу
+    if task_manager.complete_task(task_id):
+        task_title = task.get('title', 'Задачу')
+        await update.callback_query.answer(f"✅ Задачу '{task_title}' закрито", show_alert=False)
+        
+        # Визначаємо, чи задача на сьогодні, щоб показати правильний список
+        today = datetime.now().date()
+        task_due_date = None
+        if task.get('due_date'):
+            due_date_str = task['due_date'][:10] if len(task.get('due_date', '')) > 10 else task['due_date']
+            try:
+                task_due_date = datetime.strptime(due_date_str, '%Y-%m-%d').date()
+            except:
+                pass
+        
+        # Якщо задача на сьогодні, показуємо список на сьогодні, інакше - на тиждень
+        if task_due_date == today:
+            await show_tasks_today(update, context, user_id)
+        else:
+            await show_tasks_week(update, context, user_id)
+    else:
+        await update.callback_query.answer("❌ Помилка закриття задачі", show_alert=True)
 
 
 def main():

@@ -46,6 +46,11 @@ ticket_creation_state: Dict[int, Dict[str, Any]] = {}
 # Глобальні змінні для зберігання стану створення задачі
 task_creation_state: Dict[int, Dict[str, Any]] = {}
 
+# Константи для пагінації
+TASKS_PER_PAGE = 5  # Кількість задач на сторінку
+TICKETS_PER_PAGE = 5  # Кількість заявок на сторінку
+LISTS_PER_PAGE = 10  # Кількість списків на сторінку (2 колонки по 5)
+
 # Глобальна змінна для зберігання активного чату для користувача
 # Формат: {user_id: ticket_id}
 chat_active_for_user: Dict[int, int] = {}
@@ -219,8 +224,8 @@ async def new_ticket_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.callback_query.edit_message_text(message_text, reply_markup=keyboard, parse_mode='HTML')
 
 
-async def my_tickets_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Команда перегляду своїх заявок"""
+async def my_tickets_command(update: Update, context: ContextTypes.DEFAULT_TYPE, page: int = 0) -> None:
+    """Команда перегляду своїх заявок з пагінацією"""
     try:
         user_id = update.effective_user.id if update.effective_user else update.callback_query.from_user.id
         
@@ -234,13 +239,29 @@ async def my_tickets_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             return
         
         ticket_manager = get_ticket_manager()
-        tickets = ticket_manager.get_user_tickets(user_id, limit=5)
+        # Отримуємо всі заявки без обмеження
+        all_tickets = ticket_manager.get_user_tickets(user_id, limit=None)
         
-        message_text = "📋 <b>Ваші заявки:</b>\n\n"
+        total_tickets = len(all_tickets)
+        total_pages = (total_tickets + TICKETS_PER_PAGE - 1) // TICKETS_PER_PAGE if total_tickets > 0 else 0
         
-        if not tickets:
+        message_text = f"📋 <b>Ваші заявки ({total_tickets})</b>\n"
+        if total_pages > 1:
+            message_text += f"<i>Сторінка {page + 1} з {total_pages}</i>\n"
+        message_text += "\n"
+        
+        if not all_tickets:
             message_text = "📋 У вас поки немає заявок."
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("➕ Створити нову заявку", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "new_ticket"))],
+                [InlineKeyboardButton("⬅️ Назад", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "menu"))]
+            ])
         else:
+            # Обчислюємо індекси для поточної сторінки
+            start_idx = page * TICKETS_PER_PAGE
+            end_idx = min(start_idx + TICKETS_PER_PAGE, total_tickets)
+            tickets = all_tickets[start_idx:end_idx]
+            
             for ticket in tickets:
                 status_emoji = {
                     'NEW': '🆕',
@@ -262,11 +283,24 @@ async def my_tickets_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     f"Статус: {status_ua}\n"
                     f"Дата: {created_at_str}\n\n"
                 )
-        
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("➕ Створити нову заявку", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "new_ticket"))],
-            [InlineKeyboardButton("⬅️ Назад", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "menu"))]
-        ])
+            
+            keyboard_buttons = []
+            
+            # Додаємо навігацію по сторінках, якщо є більше однієї сторінки
+            if total_pages > 1:
+                nav_buttons = []
+                if page > 0:
+                    nav_buttons.append(InlineKeyboardButton("◀️ Попередня", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, f"my_tickets_page:{page - 1}")))
+                if page < total_pages - 1:
+                    nav_buttons.append(InlineKeyboardButton("Наступна ▶️", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, f"my_tickets_page:{page + 1}")))
+                if nav_buttons:
+                    keyboard_buttons.append(nav_buttons)
+            
+            keyboard_buttons.extend([
+                [InlineKeyboardButton("➕ Створити нову заявку", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "new_ticket"))],
+                [InlineKeyboardButton("⬅️ Назад", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "menu"))]
+            ])
+            keyboard = InlineKeyboardMarkup(keyboard_buttons)
         
         # Підтримка як команди, так і callback
         if update.message:
@@ -430,7 +464,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await new_ticket_command(update, context)
         # Не видаляємо повідомлення, бо new_ticket_command вже редагує його через edit_message_text
     elif callback_data == "my_tickets":
-        await my_tickets_command(update, context)
+        await my_tickets_command(update, context, page=0)
         # Не видаляємо повідомлення, бо my_tickets_command вже редагує його через edit_message_text
     elif callback_data == "menu":
         # Повернення до головного меню
@@ -497,35 +531,23 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     elif callback_data == "new_task":
         await new_task_command(update, context)
     elif callback_data == "tasks_today":
-        await show_tasks_today(update, context, user_id)
+        await show_tasks_today(update, context, user_id, page=0)
     elif callback_data == "tasks_week":
-        await show_tasks_week(update, context, user_id)
+        await show_tasks_week(update, context, user_id, page=0)
+    elif callback_data.startswith("tasks_today_page:"):
+        page = int(callback_data.split(":")[1])
+        await show_tasks_today(update, context, user_id, page=page)
+    elif callback_data.startswith("tasks_week_page:"):
+        page = int(callback_data.split(":")[1])
+        await show_tasks_week(update, context, user_id, page=page)
+    elif callback_data.startswith("my_tickets_page:"):
+        page = int(callback_data.split(":")[1])
+        await my_tickets_command(update, context, page=page)
+    elif callback_data.startswith("task_lists_page:"):
+        page = int(callback_data.split(":")[1])
+        await show_task_lists(update, context, user_id, page=page)
     elif callback_data.startswith("task_list:"):
         list_name = callback_data.split(":", 1)[1]
-        
-        # #region agent log
-        import json
-        try:
-            with open(r'd:\SD\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                log_entry = {
-                    "timestamp": datetime.now().isoformat(),
-                    "location": "bot.py:503",
-                    "message": "Task list callback received",
-                    "data": {
-                        "user_id": user_id,
-                        "callback_data": callback_data,
-                        "extracted_list_name": list_name,
-                        "has_task_state": user_id in task_creation_state,
-                        "has_list_map": user_id in task_creation_state and 'list_names_map' in task_creation_state[user_id] if user_id in task_creation_state else False,
-                        "hypothesisId": "A"
-                    },
-                    "sessionId": "debug-session",
-                    "runId": "run1"
-                }
-                f.write(json.dumps(log_entry, ensure_ascii=False) + '\n')
-        except Exception as e:
-            pass
-        # #endregion
         
         if list_name == "none":
             list_name = None
@@ -533,29 +555,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             # Перевіряємо, чи є мапа обрізаних назв, і використовуємо повну назву
             if user_id in task_creation_state and 'list_names_map' in task_creation_state[user_id]:
                 if list_name in task_creation_state[user_id]['list_names_map']:
-                    original_list_name = list_name
                     list_name = task_creation_state[user_id]['list_names_map'][list_name]
-                    
-                    # #region agent log
-                    try:
-                        with open(r'd:\SD\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                            log_entry = {
-                                "timestamp": datetime.now().isoformat(),
-                                "location": "bot.py:525",
-                                "message": "List name restored from map",
-                                "data": {
-                                    "user_id": user_id,
-                                    "truncated_name": original_list_name,
-                                    "full_name": list_name,
-                                    "hypothesisId": "A"
-                                },
-                                "sessionId": "debug-session",
-                                "runId": "run1"
-                            }
-                            f.write(json.dumps(log_entry, ensure_ascii=False) + '\n')
-                    except Exception as e:
-                        pass
-                    # #endregion
         await handle_task_list_selection(update, context, user_id, list_name)
     elif callback_data == "skip_task_notes":
         if user_id in task_creation_state:
@@ -1144,54 +1144,45 @@ async def handle_task_date_input(update: Update, context: ContextTypes.DEFAULT_T
     task_creation_state[user_id]['due_date'] = due_date
     task_creation_state[user_id]['step'] = 'list'
     
+    # Показуємо списки з пагінацією (починаємо зі сторінки 0)
+    await show_task_lists(update, context, user_id, page=0)
+
+
+async def show_task_lists(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, page: int = 0) -> None:
+    """Відображення списків задач з пагінацією"""
+    if user_id not in task_creation_state:
+        return
+    
     # Отримуємо всі списки
     task_manager = get_task_manager()
     all_lists = task_manager.get_all_lists()
     
-    message_text = "📋 <b>Виберіть список</b>\n\nОберіть список для задачі:"
+    total_lists = len(all_lists)
+    total_pages = (total_lists + LISTS_PER_PAGE - 1) // LISTS_PER_PAGE if total_lists > 0 else 0
+    
+    message_text = f"📋 <b>Виберіть список</b>\n"
+    if total_pages > 1:
+        message_text += f"<i>Сторінка {page + 1} з {total_pages}</i>\n"
+    message_text += "\nОберіть список для задачі:"
     
     keyboard_buttons = []
     
-    # Додаємо кнопки зі списками (максимум 8 на рядок для кращого відображення)
-    if all_lists:
-        for i in range(0, len(all_lists), 2):
+    # Обчислюємо індекси для поточної сторінки
+    start_idx = page * LISTS_PER_PAGE
+    end_idx = min(start_idx + LISTS_PER_PAGE, total_lists)
+    lists_page = all_lists[start_idx:end_idx]
+    
+    # Додаємо кнопки зі списками (2 колонки)
+    if lists_page:
+        for i in range(0, len(lists_page), 2):
             row = []
             for j in range(2):
-                if i + j < len(all_lists):
-                    list_name = all_lists[i + j]
+                if i + j < len(lists_page):
+                    list_name = lists_page[i + j]
                     # Формуємо callback_data з обмеженням довжини (Telegram має обмеження 64 байти)
                     # task_list: (10) + |csrf: (6) + токен (~11) = ~27 байт, залишається ~37 байт для назви
                     base_callback = f"task_list:{list_name}"
                     callback_with_csrf = csrf_manager.add_csrf_to_callback_data(user_id, base_callback)
-                    
-                    # #region agent log
-                    import json
-                    try:
-                        with open(r'd:\SD\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                            log_entry = {
-                                "timestamp": datetime.now().isoformat(),
-                                "location": "bot.py:1089",
-                                "message": "Callback data length check",
-                                "data": {
-                                    "user_id": user_id,
-                                    "list_name": list_name,
-                                    "list_name_len": len(list_name),
-                                    "list_name_bytes": len(list_name.encode('utf-8')),
-                                    "base_callback": base_callback,
-                                    "base_callback_len": len(base_callback),
-                                    "base_callback_bytes": len(base_callback.encode('utf-8')),
-                                    "callback_with_csrf": callback_with_csrf,
-                                    "callback_with_csrf_len": len(callback_with_csrf),
-                                    "callback_with_csrf_bytes": len(callback_with_csrf.encode('utf-8')),
-                                    "hypothesisId": "A"
-                                },
-                                "sessionId": "debug-session",
-                                "runId": "run1"
-                            }
-                            f.write(json.dumps(log_entry, ensure_ascii=False) + '\n')
-                    except Exception as e:
-                        pass
-                    # #endregion
                     
                     # Якщо callback_data занадто довгий, обрізаємо назву списку
                     MAX_CALLBACK_BYTES = 64
@@ -1215,28 +1206,6 @@ async def handle_task_date_input(update: Update, context: ContextTypes.DEFAULT_T
                             if 'list_names_map' not in task_creation_state[user_id]:
                                 task_creation_state[user_id]['list_names_map'] = {}
                             task_creation_state[user_id]['list_names_map'][list_name_truncated] = list_name
-                            
-                            # #region agent log
-                            try:
-                                with open(r'd:\SD\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                                    log_entry = {
-                                        "timestamp": datetime.now().isoformat(),
-                                        "location": "bot.py:1125",
-                                        "message": "List name truncated",
-                                        "data": {
-                                            "user_id": user_id,
-                                            "original_name": list_name,
-                                            "truncated_name": list_name_truncated,
-                                            "final_callback_bytes": len(callback_with_csrf.encode('utf-8')),
-                                            "hypothesisId": "A"
-                                        },
-                                        "sessionId": "debug-session",
-                                        "runId": "run1"
-                                    }
-                                    f.write(json.dumps(log_entry, ensure_ascii=False) + '\n')
-                            except Exception as e:
-                                pass
-                            # #endregion
                     
                     row.append(InlineKeyboardButton(
                         list_name,
@@ -1244,6 +1213,16 @@ async def handle_task_date_input(update: Update, context: ContextTypes.DEFAULT_T
                     ))
             if row:
                 keyboard_buttons.append(row)
+    
+    # Додаємо навігацію по сторінках, якщо є більше однієї сторінки
+    if total_pages > 1:
+        nav_buttons = []
+        if page > 0:
+            nav_buttons.append(InlineKeyboardButton("◀️ Попередня", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, f"task_lists_page:{page - 1}")))
+        if page < total_pages - 1:
+            nav_buttons.append(InlineKeyboardButton("Наступна ▶️", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, f"task_lists_page:{page + 1}")))
+        if nav_buttons:
+            keyboard_buttons.append(nav_buttons)
     
     # Кнопка "Без списку"
     keyboard_buttons.append([InlineKeyboardButton(
@@ -1259,7 +1238,11 @@ async def handle_task_date_input(update: Update, context: ContextTypes.DEFAULT_T
     
     keyboard = InlineKeyboardMarkup(keyboard_buttons)
     
-    await update.message.reply_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+    # Підтримка як команди, так і callback
+    if update.message:
+        await update.message.reply_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+    elif update.callback_query:
+        await update.callback_query.edit_message_text(message_text, reply_markup=keyboard, parse_mode='HTML')
 
 
 async def handle_task_list_selection(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, list_name: Optional[str]) -> None:
@@ -1323,8 +1306,8 @@ async def handle_task_list_selection(update: Update, context: ContextTypes.DEFAU
             del task_creation_state[user_id]
 
 
-async def show_tasks_today(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int) -> None:
-    """Показ задач на сьогодні"""
+async def show_tasks_today(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, page: int = 0) -> None:
+    """Показ задач на сьогодні з пагінацією"""
     if not auth_manager.is_user_allowed(user_id):
         await update.callback_query.edit_message_text("❌ У вас немає доступу до системи.")
         return
@@ -1337,18 +1320,26 @@ async def show_tasks_today(update: Update, context: ContextTypes.DEFAULT_TYPE, u
             return
     
     task_manager = get_task_manager()
-    tasks = task_manager.get_tasks_for_today()
+    all_tasks = task_manager.get_tasks_for_today()
     
-    # Фільтруємо по користувачу (якщо потрібно)
-    # Поки що показуємо всі задачі на сьогодні
+    total_tasks = len(all_tasks)
+    total_pages = (total_tasks + TASKS_PER_PAGE - 1) // TASKS_PER_PAGE if total_tasks > 0 else 0
     
-    if not tasks:
+    if not all_tasks:
         message_text = "📅 <b>Задачі на сьогодні</b>\n\nНа сьогодні задач немає."
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("⬅️ Меню", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "menu"))]
         ])
     else:
-        message_text = f"📅 <b>Задачі на сьогодні ({len(tasks)})</b>\n\n"
+        # Обчислюємо індекси для поточної сторінки
+        start_idx = page * TASKS_PER_PAGE
+        end_idx = min(start_idx + TASKS_PER_PAGE, total_tasks)
+        tasks = all_tasks[start_idx:end_idx]
+        
+        message_text = f"📅 <b>Задачі на сьогодні ({total_tasks})</b>\n"
+        if total_pages > 1:
+            message_text += f"<i>Сторінка {page + 1} з {total_pages}</i>\n"
+        message_text += "\n"
         
         keyboard_buttons = []
         
@@ -1395,6 +1386,16 @@ async def show_tasks_today(update: Update, context: ContextTypes.DEFAULT_TYPE, u
                 button_text = f"✅ Закрити: {task_title[:30]}" if len(task_title) > 30 else f"✅ Закрити: {task_title}"
                 keyboard_buttons.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
         
+        # Додаємо навігацію по сторінках, якщо є більше однієї сторінки
+        if total_pages > 1:
+            nav_buttons = []
+            if page > 0:
+                nav_buttons.append(InlineKeyboardButton("◀️ Попередня", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, f"tasks_today_page:{page - 1}")))
+            if page < total_pages - 1:
+                nav_buttons.append(InlineKeyboardButton("Наступна ▶️", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, f"tasks_today_page:{page + 1}")))
+            if nav_buttons:
+                keyboard_buttons.append(nav_buttons)
+        
         # Додаємо кнопку "Меню" внизу
         keyboard_buttons.append([InlineKeyboardButton("⬅️ Меню", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "menu"))])
         keyboard = InlineKeyboardMarkup(keyboard_buttons)
@@ -1402,8 +1403,8 @@ async def show_tasks_today(update: Update, context: ContextTypes.DEFAULT_TYPE, u
     await update.callback_query.edit_message_text(message_text, reply_markup=keyboard, parse_mode='HTML')
 
 
-async def show_tasks_week(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int) -> None:
-    """Показ задач на цьому тижні"""
+async def show_tasks_week(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, page: int = 0) -> None:
+    """Показ задач на цьому тижні з пагінацією"""
     if not auth_manager.is_user_allowed(user_id):
         await update.callback_query.edit_message_text("❌ У вас немає доступу до системи.")
         return
@@ -1446,54 +1447,60 @@ async def show_tasks_week(update: Update, context: ContextTypes.DEFAULT_TYPE, us
         except:
             continue
     
+    # Об'єднуємо всі задачі для пагінації
+    all_tasks_for_buttons = today_tasks + week_tasks
+    total_tasks = len(all_tasks_for_buttons)
+    total_pages = (total_tasks + TASKS_PER_PAGE - 1) // TASKS_PER_PAGE if total_tasks > 0 else 0
+    
     # Формуємо повідомлення
-    message_text = "📆 <b>Задачі на цьому тижні</b>\n\n"
+    message_text = f"📆 <b>Задачі на цьому тижні ({total_tasks})</b>\n"
+    if total_pages > 1:
+        message_text += f"<i>Сторінка {page + 1} з {total_pages}</i>\n"
+    message_text += "\n"
     
-    keyboard_buttons = []
-    all_tasks_for_buttons = []  # Зберігаємо всі задачі для кнопок
-    
-    if today_tasks:
-        message_text += f"📅 <b>Сьогодні ({len(today_tasks)})</b>\n\n"
-        for task in today_tasks:
-            task_title = task.get('title', 'Без назви')
-            message_text += f"⏳ <b>{task_title}</b>\n"
-            if task.get('notes'):
-                notes = task['notes'][:80] + "..." if len(task.get('notes', '')) > 80 else task['notes']
-                message_text += f"📝 {notes}\n"
-            if task.get('list_name'):
-                message_text += f"📋 {task['list_name']}\n"
-            message_text += "\n"
-            all_tasks_for_buttons.append(task)
-    
-    if week_tasks:
-        message_text += f"📆 <b>На цьому тижні ({len(week_tasks)})</b>\n\n"
-        for task in week_tasks:
-            task_title = task.get('title', 'Без назви')
-            message_text += f"⏳ <b>{task_title}</b>\n"
-            if task.get('due_date'):
-                due_date_str = task['due_date'][:10] if len(task.get('due_date', '')) > 10 else task['due_date']
-                try:
-                    date_obj = datetime.strptime(due_date_str, '%Y-%m-%d')
-                    due_date_formatted = date_obj.strftime('%d.%m.%Y')
-                except:
-                    due_date_formatted = due_date_str
-                message_text += f"📆 {due_date_formatted}\n"
-            if task.get('notes'):
-                notes = task['notes'][:80] + "..." if len(task.get('notes', '')) > 80 else task['notes']
-                message_text += f"📝 {notes}\n"
-            if task.get('list_name'):
-                message_text += f"📋 {task['list_name']}\n"
-            message_text += "\n"
-            all_tasks_for_buttons.append(task)
-    
-    if not today_tasks and not week_tasks:
+    if not all_tasks_for_buttons:
         message_text += "На цьому тижні задач немає."
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("⬅️ Меню", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "menu"))]
         ])
     else:
-        # Додаємо кнопки закриття для всіх задач
-        for task in all_tasks_for_buttons:
+        # Обчислюємо індекси для поточної сторінки
+        start_idx = page * TASKS_PER_PAGE
+        end_idx = min(start_idx + TASKS_PER_PAGE, total_tasks)
+        tasks = all_tasks_for_buttons[start_idx:end_idx]
+        
+        keyboard_buttons = []
+        
+        # Відображаємо задачі поточної сторінки
+        for task in tasks:
+            task_title = task.get('title', 'Без назви')
+            message_text += f"⏳ <b>{task_title}</b>\n"
+            
+            if task.get('due_date'):
+                due_date_str = task['due_date'][:10] if len(task.get('due_date', '')) > 10 else task['due_date']
+                try:
+                    date_obj = datetime.strptime(due_date_str, '%Y-%m-%d')
+                    due_date_formatted = date_obj.strftime('%d.%m.%Y')
+                    # Визначаємо, чи це сьогодні
+                    task_date = date_obj.date()
+                    if task_date == today:
+                        due_date_formatted = f"📅 Сьогодні ({due_date_formatted})"
+                    else:
+                        due_date_formatted = f"📆 {due_date_formatted}"
+                except:
+                    due_date_formatted = f"📆 {due_date_str}"
+                message_text += f"{due_date_formatted}\n"
+            
+            if task.get('notes'):
+                notes = task['notes'][:80] + "..." if len(task.get('notes', '')) > 80 else task['notes']
+                message_text += f"📝 {notes}\n"
+            
+            if task.get('list_name'):
+                message_text += f"📋 {task['list_name']}\n"
+            
+            message_text += "\n"
+            
+            # Додаємо кнопку закриття для кожної задачі
             task_id = task.get('id')
             if task_id:
                 callback_data = csrf_manager.add_csrf_to_callback_data(user_id, f"complete_task:{task_id}")
@@ -1510,9 +1517,18 @@ async def show_tasks_week(update: Update, context: ContextTypes.DEFAULT_TYPE, us
                     callback_data = csrf_manager.add_csrf_to_callback_data(user_id, f"complete_task_short:{short_id}")
                 
                 # Обмежуємо довжину назви кнопки
-                task_title = task.get('title', 'Без назви')
                 button_text = f"✅ Закрити: {task_title[:30]}" if len(task_title) > 30 else f"✅ Закрити: {task_title}"
                 keyboard_buttons.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+        
+        # Додаємо навігацію по сторінках, якщо є більше однієї сторінки
+        if total_pages > 1:
+            nav_buttons = []
+            if page > 0:
+                nav_buttons.append(InlineKeyboardButton("◀️ Попередня", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, f"tasks_week_page:{page - 1}")))
+            if page < total_pages - 1:
+                nav_buttons.append(InlineKeyboardButton("Наступна ▶️", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, f"tasks_week_page:{page + 1}")))
+            if nav_buttons:
+                keyboard_buttons.append(nav_buttons)
         
         # Додаємо кнопку "Меню" внизу
         keyboard_buttons.append([InlineKeyboardButton("⬅️ Меню", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "menu"))])
@@ -1564,9 +1580,9 @@ async def handle_task_completion(update: Update, context: ContextTypes.DEFAULT_T
         
         # Якщо задача на сьогодні, показуємо список на сьогодні, інакше - на тиждень
         if task_due_date == today:
-            await show_tasks_today(update, context, user_id)
+            await show_tasks_today(update, context, user_id, page=0)
         else:
-            await show_tasks_week(update, context, user_id)
+            await show_tasks_week(update, context, user_id, page=0)
     else:
         await update.callback_query.answer("❌ Помилка закриття задачі", show_alert=True)
 

@@ -422,6 +422,10 @@ def tickets():
     sort_by = request.args.get('sort_by', 'created_at')
     sort_order = request.args.get('sort_order', 'desc')
     
+    # Пагінація
+    page = request.args.get('page', 1, type=int)
+    per_page = 20  # Кількість заявок на сторінку
+    
     # Обробка періодів
     date_from = None
     date_to = None
@@ -465,8 +469,9 @@ def tickets():
             except ValueError:
                 pass
     
+    # Отримуємо всі заявки без обмеження для підрахунку загальної кількості
     if current_user.is_admin:
-        tickets = ticket_manager.get_all_tickets(
+        all_tickets = ticket_manager.get_all_tickets(
             company_id=company_id,
             status=status,
             ticket_type=ticket_type,
@@ -474,10 +479,10 @@ def tickets():
             date_to=date_to,
             sort_by=sort_by,
             sort_order=sort_order,
-            limit=1000
+            limit=None
         )
     else:
-        tickets = ticket_manager.get_user_tickets(
+        all_tickets = ticket_manager.get_user_tickets(
             current_user.user_id,
             status=status,
             ticket_type=ticket_type,
@@ -485,8 +490,23 @@ def tickets():
             date_to=date_to,
             sort_by=sort_by,
             sort_order=sort_order,
-            limit=1000
+            limit=None
         )
+    
+    # Обчислюємо пагінацію
+    total_tickets = len(all_tickets)
+    total_pages = (total_tickets + per_page - 1) // per_page if total_tickets > 0 else 0
+    
+    # Обмежуємо page в межах допустимих значень
+    if page < 1:
+        page = 1
+    elif page > total_pages and total_pages > 0:
+        page = total_pages
+    
+    # Обчислюємо індекси для поточної сторінки
+    start_idx = (page - 1) * per_page
+    end_idx = min(start_idx + per_page, total_tickets)
+    tickets = all_tickets[start_idx:end_idx]
     
     with get_session() as session:
         companies_list = session.query(Company).order_by(Company.name).all() if current_user.is_admin else []
@@ -527,7 +547,12 @@ def tickets():
                          selected_date_from=date_from_str,
                          selected_date_to=date_to_str,
                          sort_by=sort_by,
-                         sort_order=sort_order)
+                         sort_order=sort_order,
+                         page=page,
+                         total_pages=total_pages,
+                         total_tickets=total_tickets,
+                         per_page=per_page,
+                         end_index=min(page * per_page, total_tickets))
 
 
 @app.route('/ticket/<int:ticket_id>')
@@ -1067,6 +1092,10 @@ def users():
     sort_by = request.args.get('sort_by', 'user_id')
     sort_order = request.args.get('sort_order', 'asc')
     
+    # Пагінація
+    page = request.args.get('page', 1, type=int)
+    per_page = 20  # Кількість користувачів на сторінку
+    
     with get_session() as session:
         # Застосовуємо сортування
         if sort_by == 'company_id':
@@ -1098,6 +1127,22 @@ def users():
                 query = query.order_by(order_field.asc().nulls_first())
         
         all_users = query.all()
+        
+        # Обчислюємо пагінацію
+        total_users = len(all_users)
+        total_pages = (total_users + per_page - 1) // per_page if total_users > 0 else 0
+        
+        # Обмежуємо page в межах допустимих значень
+        if page < 1:
+            page = 1
+        elif page > total_pages and total_pages > 0:
+            page = total_pages
+        
+        # Обчислюємо індекси для поточної сторінки
+        start_idx = (page - 1) * per_page
+        end_idx = min(start_idx + per_page, total_users)
+        users_page = all_users[start_idx:end_idx]
+        
         pending_requests = auth_manager.get_pending_requests()
         companies_list = session.query(Company).all()
         # Конвертуємо в список словників з інформацією про printer_service_enabled
@@ -1110,10 +1155,10 @@ def users():
         printer_manager = get_printer_manager()
         printers = printer_manager.get_all_printers(active_only=True)
         
-        # Отримуємо прив'язки користувачів до принтерів
+        # Отримуємо прив'язки користувачів до принтерів (тільки для поточної сторінки)
         from models import UserPrinter
         user_printers = {}
-        for user in all_users:
+        for user in users_page:
             user_printers[user.user_id] = [
                 up.printer_id for up in session.query(UserPrinter).filter(
                     UserPrinter.user_id == user.user_id
@@ -1121,13 +1166,18 @@ def users():
             ]
         
         return render_template('users.html',
-                             users=all_users,
+                             users=users_page,
                              pending_requests=pending_requests,
                              companies=companies,
                              printers=printers,
                              user_printers=user_printers,
                              sort_by=sort_by,
-                             sort_order=sort_order)
+                             sort_order=sort_order,
+                             page=page,
+                             total_pages=total_pages,
+                             total_users=total_users,
+                             per_page=per_page,
+                             end_index=min(page * per_page, total_users))
 
 
 @app.route('/users/approve/<int:user_id>', methods=['POST'])
@@ -3094,6 +3144,10 @@ def todo():
         sort_by = request.args.get('sort_by', 'due_date')
         sort_order = request.args.get('sort_order', 'asc')
         
+        # Пагінація
+        page = request.args.get('page', 1, type=int)
+        per_page = 20  # Кількість задач на сторінку
+        
         # Обробка періодів для due_date
         date_from = None
         date_to = None
@@ -3211,6 +3265,16 @@ def todo():
                 task_dict['is_overdue'] = False
             processed_tasks.append(task_dict)
         
+        # Обчислюємо пагінацію (тільки для негрупованих задач)
+        total_tasks = len(processed_tasks)
+        total_pages = (total_tasks + per_page - 1) // per_page if total_tasks > 0 else 0
+        
+        # Обмежуємо page в межах допустимих значень
+        if page < 1:
+            page = 1
+        elif page > total_pages and total_pages > 0:
+            page = total_pages
+        
         # Розбиваємо задачі на групи за датами (тільки для "Весь перелік")
         grouped_tasks = None
         if filter_type == 'all':
@@ -3244,6 +3308,11 @@ def todo():
                     except (ValueError, TypeError):
                         # Якщо не вдалося розпарсити дату, додаємо до "Без терміну"
                         grouped_tasks['no_date'].append(task)
+        else:
+            # Для інших фільтрів застосовуємо пагінацію до processed_tasks
+            start_idx = (page - 1) * per_page
+            end_idx = min(start_idx + per_page, total_tasks)
+            processed_tasks = processed_tasks[start_idx:end_idx]
         
         return render_template('todo.html',
                              tasks=processed_tasks,
@@ -3264,7 +3333,12 @@ def todo():
                              selected_date_from=date_from_str,
                              selected_date_to=date_to_str,
                              sort_by=sort_by,
-                             sort_order=sort_order)
+                             sort_order=sort_order,
+                             page=page,
+                             total_pages=total_pages,
+                             total_tasks=total_tasks,
+                             per_page=per_page,
+                             end_index=min(page * per_page, total_tasks) if filter_type != 'all' else total_tasks)
     except Exception as e:
         logger.log_error(f"Помилка завантаження сторінки TO DO: {e}")
         flash(f'Помилка завантаження сторінки: {e}', 'danger')

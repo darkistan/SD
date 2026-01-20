@@ -413,7 +413,7 @@ class TicketManager:
         date_to: Optional[datetime] = None,
         sort_by: Optional[str] = None,
         sort_order: str = 'desc',
-        limit: int = 100
+        limit: Optional[int] = 100
     ) -> List[Dict[str, Any]]:
         """
         Отримання заявок користувача
@@ -468,9 +468,15 @@ class TicketManager:
                     order_column = Ticket.created_at
                 
                 if sort_order == 'asc':
-                    tickets = query.order_by(order_column.asc()).limit(limit).all()
+                    query = query.order_by(order_column.asc())
                 else:
-                    tickets = query.order_by(order_column.desc()).limit(limit).all()
+                    query = query.order_by(order_column.desc())
+                
+                # Застосовуємо limit тільки якщо він вказаний
+                if limit is not None:
+                    tickets = query.limit(limit).all()
+                else:
+                    tickets = query.all()
                 
                 return [self._ticket_to_dict(ticket, session) for ticket in tickets]
                 

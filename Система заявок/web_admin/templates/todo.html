@@ -1218,6 +1218,52 @@
                             </tbody>
                         </table>
                     </div>
+                    
+                    {% if filter_type != 'all' and total_pages > 1 %}
+                    <nav aria-label="Навігація по сторінкам">
+                        <ul class="pagination justify-content-center mt-3">
+                            {% if page > 1 %}
+                            <li class="page-item">
+                                <a class="page-link" href="{{ url_for('todo', filter=filter_type, list=current_list, page=page-1, search=selected_search, list_filter=selected_list, status_filter=selected_status, important_filter=selected_important, recurrence_filter=selected_recurrence, period=selected_period, date_from=selected_date_from, date_to=selected_date_to, sort_by=sort_by, sort_order=sort_order) }}">Попередня</a>
+                            </li>
+                            {% else %}
+                            <li class="page-item disabled">
+                                <span class="page-link">Попередня</span>
+                            </li>
+                            {% endif %}
+                            
+                            {% for p in range(1, total_pages + 1) %}
+                                {% if p == page %}
+                                <li class="page-item active">
+                                    <span class="page-link">{{ p }}</span>
+                                </li>
+                                {% elif p <= 2 or p >= total_pages - 1 or (p >= page - 1 and p <= page + 1) %}
+                                <li class="page-item">
+                                    <a class="page-link" href="{{ url_for('todo', filter=filter_type, list=current_list, page=p, search=selected_search, list_filter=selected_list, status_filter=selected_status, important_filter=selected_important, recurrence_filter=selected_recurrence, period=selected_period, date_from=selected_date_from, date_to=selected_date_to, sort_by=sort_by, sort_order=sort_order) }}">{{ p }}</a>
+                                </li>
+                                {% elif p == page - 2 or p == page + 2 %}
+                                <li class="page-item disabled">
+                                    <span class="page-link">...</span>
+                                </li>
+                                {% endif %}
+                            {% endfor %}
+                            
+                            {% if page < total_pages %}
+                            <li class="page-item">
+                                <a class="page-link" href="{{ url_for('todo', filter=filter_type, list=current_list, page=page+1, search=selected_search, list_filter=selected_list, status_filter=selected_status, important_filter=selected_important, recurrence_filter=selected_recurrence, period=selected_period, date_from=selected_date_from, date_to=selected_date_to, sort_by=sort_by, sort_order=sort_order) }}">Наступна</a>
+                            </li>
+                            {% else %}
+                            <li class="page-item disabled">
+                                <span class="page-link">Наступна</span>
+                            </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                    <div class="text-center text-muted small mt-2">
+                        Показано {{ (page - 1) * per_page + 1 }}-{{ end_index }} з {{ total_tasks }} завдань
+                    </div>
+                    {% endif %}
+                    
                     {% else %}
                     <p class="text-muted text-center py-4">Завдань поки немає</p>
                     {% endif %}

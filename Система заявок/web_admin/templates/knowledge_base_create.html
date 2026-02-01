@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block title %}Створити нотатку - База знань{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="mb-0">
+                <i class="bi bi-plus-circle"></i> Створити нотатку
+            </h1>
+            <a href="{{ url_for('knowledge_base') }}" class="btn btn-secondary">
+                <i class="bi bi-arrow-left"></i> Назад до списку
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('knowledge_base_create') }}" id="noteForm">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="commands_json" id="commands_json" value="[]">
+                    
+                    <div class="mb-3">
+                        <label for="title" class="form-label">Заголовок <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="title" name="title" required maxlength="500">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="content" class="form-label">Текст нотатки</label>
+                        <textarea class="form-control" id="content" name="content" rows="6"></textarea>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="resource_url" class="form-label">Посилання на ресурс</label>
+                        <input type="url" class="form-control" id="resource_url" name="resource_url" maxlength="1000" placeholder="https://example.com">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Команди консолі</label>
+                        <div id="commands-container">
+                            <!-- Команди будуть додані динамічно -->
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="add-command-btn">
+                            <i class="bi bi-plus"></i> Додати команду
+                        </button>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="tags" class="form-label">Теги</label>
+                        <input type="text" class="form-control" id="tags" name="tags" maxlength="500" placeholder="python, flask, api">
+                        <small class="form-text text-muted">Теги через кому</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="category" class="form-label">Категорія</label>
+                        <input type="text" class="form-control" id="category" name="category" maxlength="100" list="categories-list" placeholder="Або виберіть зі списку">
+                        <datalist id="categories-list">
+                            {% for cat in categories %}
+                            <option value="{{ cat }}">
+                            {% endfor %}
+                        </datalist>
+                    </div>
+                    
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check"></i> Створити
+                        </button>
+                        <a href="{{ url_for('knowledge_base') }}" class="btn btn-secondary">
+                            <i class="bi bi-x"></i> Скасувати
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let commandIndex = 0;
+
+function addCommandBlock(command = '', description = '') {
+    const container = document.getElementById('commands-container');
+    const block = document.createElement('div');
+    block.className = 'card mb-2';
+    block.id = `command-block-${commandIndex}`;
+    block.innerHTML = `
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+                <h6 class="mb-0">Команда ${commandIndex + 1}</h6>
+                <button type="button" class="btn btn-sm btn-outline-danger remove-command-btn" data-index="${commandIndex}">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </div>
+            <div class="mb-2">
+                <label class="form-label small">Команда</label>
+                <input type="text" class="form-control font-monospace command-input" data-index="${commandIndex}" value="${command}" placeholder="git clone https://...">
+            </div>
+            <div>
+                <label class="form-label small">Опис (необов'язково)</label>
+                <textarea class="form-control description-input" data-index="${commandIndex}" rows="2" placeholder="Опис команди">${description}</textarea>
+            </div>
+        </div>
+    `;
+    container.appendChild(block);
+    commandIndex++;
+    updateCommandsJson();
+    
+    // Додаємо обробники подій
+    block.querySelector('.command-input').addEventListener('input', updateCommandsJson);
+    block.querySelector('.description-input').addEventListener('input', updateCommandsJson);
+    block.querySelector('.remove-command-btn').addEventListener('click', function() {
+        block.remove();
+        updateCommandsJson();
+    });
+}
+
+function updateCommandsJson() {
+    const commands = [];
+    document.querySelectorAll('.command-input').forEach(input => {
+        const command = input.value.trim();
+        if (command) {
+            const index = input.dataset.index;
+            const descriptionInput = document.querySelector(`.description-input[data-index="${index}"]`);
+            const description = descriptionInput ? descriptionInput.value.trim() : '';
+            commands.push({
+                command: command,
+                description: description
+            });
+        }
+    });
+    document.getElementById('commands_json').value = JSON.stringify(commands);
+}
+
+document.getElementById('add-command-btn').addEventListener('click', function() {
+    addCommandBlock();
+});
+
+// Додаємо перший блок при завантаженні
+document.addEventListener('DOMContentLoaded', function() {
+    // Можна залишити порожнім або додати один порожній блок
+});
+</script>
+{% endblock %}

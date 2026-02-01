@@ -53,6 +53,13 @@
                         </a>
                     </li>
                     {% endif %}
+                    {% if current_user.is_authenticated and has_kb_access %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{url_for('knowledge_base')}}">
+                            <i class="bi bi-book"></i> База знань
+                        </a>
+                    </li>
+                    {% endif %}
                     {% if current_user.is_authenticated and current_user.is_admin %}
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="adminDropdown" role="button" data-bs-toggle="dropdown">

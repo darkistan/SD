@@ -1,7 +1,7 @@
 """
 SQLAlchemy моделі для системи заявок на заправку картриджей та ремонт принтерів
 """
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, ForeignKey, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -427,4 +427,48 @@ class BackupSettings(Base):
     
     def __repr__(self):
         return f"<BackupSettings(id={self.id}, enabled={self.enabled}, schedule_type='{self.schedule_type}')>"
+
+
+class KnowledgeBaseNote(Base):
+    """Модель нотатки бази знань"""
+    __tablename__ = 'knowledge_base_notes'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    title = Column(String(500), nullable=False, index=True)  # Заголовок нотатки
+    content = Column(Text, nullable=True)  # Текст нотатки
+    resource_url = Column(String(1000), nullable=True)  # Посилання на ресурс
+    commands = Column(Text, nullable=True)  # Команди консолі (по одній на рядок)
+    tags = Column(String(500), nullable=True, index=True)  # Теги через кому
+    category = Column(String(100), nullable=True, index=True)  # Категорія
+    author_id = Column(Integer, ForeignKey('users.user_id'), nullable=False, index=True)  # ID автора
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, index=True)
+    
+    # Relationships
+    author = relationship('User', foreign_keys=[author_id])
+    
+    def __repr__(self):
+        return f"<KnowledgeBaseNote(id={self.id}, title='{self.title[:50]}...', author_id={self.author_id})>"
+
+
+class KnowledgeBaseFavorite(Base):
+    """Модель закладок користувачів для нотаток бази знань"""
+    __tablename__ = 'knowledge_base_favorites'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.user_id', ondelete='CASCADE'), nullable=False, index=True)
+    note_id = Column(Integer, ForeignKey('knowledge_base_notes.id', ondelete='CASCADE'), nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    
+    # Relationships
+    user = relationship('User', foreign_keys=[user_id])
+    note = relationship('KnowledgeBaseNote', foreign_keys=[note_id])
+    
+    # Унікальний індекс на (user_id, note_id)
+    __table_args__ = (
+        UniqueConstraint('user_id', 'note_id', name='uq_user_note_favorite'),
+    )
+    
+    def __repr__(self):
+        return f"<KnowledgeBaseFavorite(id={self.id}, user_id={self.user_id}, note_id={self.note_id})>"
 

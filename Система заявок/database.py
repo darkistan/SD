@@ -113,6 +113,10 @@ class DatabaseManager:
             # Додаємо перевірку для безпеки
             self.migrate_create_ticket_chat_table()
             
+            # Міграції для бази знань
+            self.migrate_add_commands_to_knowledge_base_notes()
+            self.migrate_create_knowledge_base_favorites_table()
+            
             # Створюємо адміністратора за замовчуванням, якщо його немає
             self.create_default_admin()
             
@@ -411,6 +415,34 @@ class DatabaseManager:
             logger.log_info("Таблиця timers буде створена через Base.metadata.create_all()")
         except Exception as e:
             logger.log_error(f"Помилка міграції створення timers: {e}")
+    
+    def migrate_add_commands_to_knowledge_base_notes(self):
+        """Міграція: додавання колонки commands до таблиці knowledge_base_notes"""
+        try:
+            with self.engine.begin() as conn:
+                inspector = inspect(self.engine)
+                if 'knowledge_base_notes' in inspector.get_table_names():
+                    columns = [col['name'] for col in inspector.get_columns('knowledge_base_notes')]
+                    
+                    if 'commands' not in columns:
+                        conn.execute(text("ALTER TABLE knowledge_base_notes ADD COLUMN commands TEXT"))
+                        logger.log_info("Додано колонку commands до knowledge_base_notes")
+        except Exception as e:
+            logger.log_error(f"Помилка міграції додавання commands до knowledge_base_notes: {e}")
+    
+    def migrate_create_knowledge_base_favorites_table(self):
+        """Міграція: створення таблиці knowledge_base_favorites для закладок"""
+        try:
+            inspector = inspect(self.engine)
+            if 'knowledge_base_favorites' in inspector.get_table_names():
+                # Таблиця вже існує
+                return
+            
+            # Таблиця буде створена через Base.metadata.create_all()
+            # Ця міграція лише для логування
+            logger.log_info("Таблиця knowledge_base_favorites буде створена через Base.metadata.create_all()")
+        except Exception as e:
+            logger.log_error(f"Помилка міграції створення knowledge_base_favorites: {e}")
     
     @contextmanager
     def get_session(self, max_retries: int = 3) -> Generator[Session, None, None]:

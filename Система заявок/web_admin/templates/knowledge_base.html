@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+
+{% block title %}База знань - Система заявок{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="mb-0">
+                <i class="bi bi-book"></i> База знань
+            </h1>
+            <div class="d-flex gap-2">
+                <a href="{{ url_for('knowledge_base_favorites') }}" class="btn btn-warning">
+                    <i class="bi bi-star-fill"></i> Мої закладки
+                </a>
+                <a href="{{ url_for('knowledge_base_create') }}" class="btn btn-primary">
+                    <i class="bi bi-plus"></i> Створити нотатку
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-funnel"></i> Пошук та фільтри
+                </h5>
+                <button type="button" class="btn btn-sm btn-link p-0 collapse-toggle" data-target="search-filters-content" aria-label="Згорнути/розгорнути фільтри">
+                    <i class="bi bi-chevron-down collapse-icon"></i>
+                </button>
+            </div>
+            <div class="collapse" id="search-filters-content">
+                <div class="card-body">
+                    <form method="GET" action="{{ url_for('knowledge_base') }}" class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label">Пошук по тексту</label>
+                            <input type="text" name="search" class="form-control" placeholder="Заголовок, текст, теги..." value="{{ search_text }}">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Теги</label>
+                            <input type="text" name="tags" class="form-control" placeholder="python, flask" value="{{ tags }}">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Категорія</label>
+                            <select name="category" class="form-select">
+                                <option value="">Всі</option>
+                                {% for cat in categories %}
+                                <option value="{{ cat }}" {% if category == cat %}selected{% endif %}>{{ cat }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Дата від</label>
+                            <input type="date" name="date_from" class="form-control" value="{{ date_from }}">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Дата до</label>
+                            <input type="date" name="date_to" class="form-control" value="{{ date_to }}">
+                        </div>
+                        <div class="col-md-1">
+                            <label class="form-label">&nbsp;</label>
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="bi bi-search"></i> Пошук
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-list-ul"></i> Нотатки
+                    {% if total_notes > 0 %}
+                    <span class="badge bg-secondary">{{ total_notes }}</span>
+                    {% endif %}
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if notes %}
+                <div class="list-group">
+                    {% for note in notes %}
+                    <div class="list-group-item">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="flex-grow-1">
+                                <h6 class="mb-1">
+                                    <a href="{{ url_for('knowledge_base_detail', note_id=note.id) }}" class="text-decoration-none">
+                                        {% if note.is_favorite %}<i class="bi bi-star-fill text-warning"></i> {% endif %}{{ note.title }}
+                                    </a>
+                                </h6>
+                                {% if note.content %}
+                                <p class="mb-1 text-muted small">{{ note.content[:200] }}{% if note.content|length > 200 %}...{% endif %}</p>
+                                {% endif %}
+                                <div class="d-flex flex-wrap gap-2 mt-2">
+                                    {% if note.category %}
+                                    <span class="badge bg-info">
+                                        <i class="bi bi-folder"></i> {{ note.category }}
+                                    </span>
+                                    {% endif %}
+                                    {% if note.tags %}
+                                    <span class="badge bg-secondary">
+                                        <i class="bi bi-tags"></i> {{ note.tags }}
+                                    </span>
+                                    {% endif %}
+                                    {% if note.resource_url %}
+                                    <a href="{{ note.resource_url }}" target="_blank" class="badge bg-primary text-decoration-none">
+                                        <i class="bi bi-link-45deg"></i> Посилання
+                                    </a>
+                                    {% endif %}
+                                </div>
+                                <small class="text-muted d-block mt-2">
+                                    <i class="bi bi-person"></i> {{ note.author_name or 'Невідомо' }} | 
+                                    <i class="bi bi-calendar"></i> {{ note.created_at[:10] if note.created_at else 'Невідомо' }}
+                                    {% if note.updated_at and note.updated_at != note.created_at %}
+                                    | <i class="bi bi-arrow-clockwise"></i> Оновлено: {{ note.updated_at[:10] }}
+                                    {% endif %}
+                                </small>
+                            </div>
+                            <div class="ms-3 d-flex gap-1">
+                                <form method="POST" action="{{ url_for('knowledge_base_toggle_favorite', note_id=note.id) }}" style="display: inline;">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                    <button type="submit" class="btn btn-sm {% if note.is_favorite %}btn-warning{% else %}btn-outline-warning{% endif %}" title="{% if note.is_favorite %}Видалити з обраних{% else %}Додати в обрані{% endif %}">
+                                        <i class="bi {% if note.is_favorite %}bi-star-fill{% else %}bi-star{% endif %}"></i>
+                                    </button>
+                                </form>
+                                {% if note.can_edit %}
+                                <a href="{{ url_for('knowledge_base_edit', note_id=note.id) }}" class="btn btn-sm btn-outline-primary" title="Редагувати">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                
+                {% if total_pages > 1 %}
+                <nav aria-label="Пагінація нотаток" class="mt-4">
+                    <ul class="pagination justify-content-center">
+                        {% if page > 1 %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('knowledge_base', page=page-1, search=search_text, tags=tags, category=category, date_from=date_from, date_to=date_to) }}">
+                                <i class="bi bi-chevron-left"></i> Попередня
+                            </a>
+                        </li>
+                        {% endif %}
+                        
+                        {% for p in range(1, total_pages + 1) %}
+                            {% if p == page %}
+                            <li class="page-item active">
+                                <span class="page-link">{{ p }}</span>
+                            </li>
+                            {% elif p <= 3 or p > total_pages - 3 or (p >= page - 1 and p <= page + 1) %}
+                            <li class="page-item">
+                                <a class="page-link" href="{{ url_for('knowledge_base', page=p, search=search_text, tags=tags, category=category, date_from=date_from, date_to=date_to) }}">{{ p }}</a>
+                            </li>
+                            {% elif p == 4 or p == total_pages - 3 %}
+                            <li class="page-item disabled">
+                                <span class="page-link">...</span>
+                            </li>
+                            {% endif %}
+                        {% endfor %}
+                        
+                        {% if page < total_pages %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('knowledge_base', page=page+1, search=search_text, tags=tags, category=category, date_from=date_from, date_to=date_to) }}">
+                                Наступна <i class="bi bi-chevron-right"></i>
+                            </a>
+                        </li>
+                        {% endif %}
+                    </ul>
+                </nav>
+                <div class="text-center text-muted mt-2">
+                    Показано {{ (page - 1) * 20 + 1 }}-{{ end_index }} з {{ total_notes }} нотаток
+                </div>
+                {% endif %}
+                {% else %}
+                <div class="text-center py-5">
+                    <i class="bi bi-book" style="font-size: 3rem; color: #ccc;"></i>
+                    <p class="text-muted mt-3">Нотаток не знайдено</p>
+                    <a href="{{ url_for('knowledge_base_create') }}" class="btn btn-primary">
+                        <i class="bi bi-plus"></i> Створити першу нотатку
+                    </a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Згортання/розгортання фільтрів
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('.collapse-toggle').forEach(button => {
+            const targetId = button.dataset.target;
+            const target = document.getElementById(targetId);
+            if (!target) return;
+            
+            // Встановлюємо початковий стан (згорнуто за замовчуванням)
+            if (!target.classList.contains('show')) {
+                button.setAttribute('aria-expanded', 'false');
+            }
+            
+            button.addEventListener('click', function(e) {
+                e.preventDefault();
+                const isExpanded = this.getAttribute('aria-expanded') === 'true';
+                
+                if (isExpanded) {
+                    // Згортаємо
+                    target.classList.remove('show');
+                    this.setAttribute('aria-expanded', 'false');
+                    const icon = this.querySelector('.collapse-icon');
+                    if (icon) {
+                        icon.classList.remove('bi-chevron-up');
+                        icon.classList.add('bi-chevron-down');
+                    }
+                } else {
+                    // Розгортаємо
+                    target.classList.add('show');
+                    this.setAttribute('aria-expanded', 'true');
+                    const icon = this.querySelector('.collapse-icon');
+                    if (icon) {
+                        icon.classList.remove('bi-chevron-down');
+                        icon.classList.add('bi-chevron-up');
+                    }
+                }
+            });
+        });
+    });
+</script>
+{% endblock %}

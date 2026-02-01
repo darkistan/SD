@@ -18,7 +18,7 @@ if __name__ == '__main__':
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
-from telegram.error import Conflict, TimedOut, NetworkError, RetryAfter
+from telegram.error import Conflict, TimedOut, NetworkError, RetryAfter, BadRequest
 
 from auth import auth_manager
 from logger import logger
@@ -32,6 +32,7 @@ from status_manager import get_status_manager
 from poll_manager import get_poll_manager
 from chat_manager import get_chat_manager
 from task_manager import get_task_manager
+from knowledge_base_manager import get_knowledge_base_manager
 from datetime import datetime, time as dt_time, timedelta
 
 # Завантажуємо змінні середовища
@@ -46,10 +47,14 @@ ticket_creation_state: Dict[int, Dict[str, Any]] = {}
 # Глобальні змінні для зберігання стану створення задачі
 task_creation_state: Dict[int, Dict[str, Any]] = {}
 
+# Глобальні змінні для зберігання стану створення нотатки
+note_creation_state: Dict[int, Dict[str, Any]] = {}
+
 # Константи для пагінації
 TASKS_PER_PAGE = 5  # Кількість задач на сторінку
 TICKETS_PER_PAGE = 5  # Кількість заявок на сторінку
 LISTS_PER_PAGE = 10  # Кількість списків на сторінку (2 колонки по 5)
+NOTES_PER_PAGE = 10  # Кількість нотаток на сторінку
 
 # Глобальна змінна для зберігання активного чату для користувача
 # Формат: {user_id: ticket_id}
@@ -72,6 +77,49 @@ def get_ticket_type_ua(ticket_type: str) -> str:
     return type_translations.get(ticket_type, ticket_type)
 
 
+async def safe_edit_message_text(query, text: str, reply_markup=None, parse_mode='HTML', **kwargs):
+    """
+    Безпечне редагування повідомлення з обробкою застарілих queries
+    
+    Args:
+        query: CallbackQuery об'єкт
+        text: Текст повідомлення
+        reply_markup: Клавіатура (опціонально)
+        parse_mode: Режим парсингу (за замовчуванням HTML)
+        **kwargs: Інші параметри для edit_message_text
+        
+    Returns:
+        True якщо успішно, False якщо query застарів
+    """
+    try:
+        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=parse_mode, **kwargs)
+        return True
+    except BadRequest as e:
+        error_msg = str(e).lower()
+        if 'query is too old' in error_msg or 'query id is invalid' in error_msg:
+            # Застарілий query - не логуємо як помилку
+            try:
+                await query.answer("⏰ Запит застарів. Будь ласка, оновіть меню.", show_alert=False)
+            except:
+                pass
+            return False
+        else:
+            # Інша помилка - логуємо
+            logger.log_error(f"Помилка редагування повідомлення: {e}")
+            try:
+                await query.answer("❌ Помилка оновлення повідомлення.", show_alert=False)
+            except:
+                pass
+            return False
+    except Exception as e:
+        logger.log_error(f"Помилка редагування повідомлення: {e}")
+        try:
+            await query.answer("❌ Помилка оновлення повідомлення.", show_alert=False)
+        except:
+            pass
+        return False
+
+
 def create_menu_keyboard(user_id: int) -> InlineKeyboardMarkup:
     """
     Створення головного меню
@@ -92,10 +140,11 @@ def create_menu_keyboard(user_id: int) -> InlineKeyboardMarkup:
         # Додаємо кнопки для задач, якщо оповіщення увімкнені
         with get_session() as session:
             user = session.query(User).filter(User.user_id == user_id).first()
-            if user and user.notifications_enabled:
+            if user and (user.notifications_enabled or user.role == 'admin'):
                 buttons.append([InlineKeyboardButton("📝 Створити задачу", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "new_task"))])
                 buttons.append([InlineKeyboardButton("📅 Задачі на сьогодні", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "tasks_today"))])
                 buttons.append([InlineKeyboardButton("📆 Задачі на цьому тижні", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "tasks_week"))])
+                buttons.append([InlineKeyboardButton("📚 База знань", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "knowledge_base"))])
     else:
         # Неавторизований користувач
         buttons.append([InlineKeyboardButton("🔐 Запросити доступ", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "request_access"))])
@@ -323,10 +372,587 @@ async def my_tickets_command(update: Update, context: ContextTypes.DEFAULT_TYPE,
             await update.callback_query.edit_message_text(error_msg)
 
 
+async def knowledge_base_command(update: Update, context: ContextTypes.DEFAULT_TYPE, page: int = 0) -> None:
+    """Команда перегляду бази знань з пагінацією"""
+    try:
+        user_id = update.effective_user.id if update.effective_user else update.callback_query.from_user.id
+        
+        if not auth_manager.is_user_allowed(user_id):
+            logger.log_unauthorized_access_attempt(user_id, "/knowledge_base")
+            error_msg = "❌ У вас немає доступу до системи."
+            if update.message:
+                await update.message.reply_text(error_msg)
+            elif update.callback_query:
+                await update.callback_query.edit_message_text(error_msg)
+            return
+        
+        # Перевіряємо права доступу
+        with get_session() as session:
+            user = session.query(User).filter(User.user_id == user_id).first()
+            if not user or (not user.notifications_enabled and user.role != 'admin'):
+                error_msg = "❌ У вас немає доступу до бази знань."
+                if update.message:
+                    await update.message.reply_text(error_msg)
+                elif update.callback_query:
+                    await update.callback_query.edit_message_text(error_msg)
+                return
+        
+        knowledge_base_manager = get_knowledge_base_manager()
+        all_notes = knowledge_base_manager.get_all_notes(limit=None)
+        
+        total_notes = len(all_notes)
+        total_pages = (total_notes + NOTES_PER_PAGE - 1) // NOTES_PER_PAGE if total_notes > 0 else 0
+        
+        message_text = f"📚 <b>База знань ({total_notes})</b>\n"
+        if total_pages > 1:
+            message_text += f"<i>Сторінка {page + 1} з {total_pages}</i>\n"
+        message_text += "\n"
+        
+        if not all_notes:
+            message_text = "📚 База знань порожня.\n\nСтворіть першу нотатку!"
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("➕ Створити нотатку", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "create_note"))],
+                [InlineKeyboardButton("⬅️ Назад", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "menu"))]
+            ])
+        else:
+            # Обчислюємо індекси для поточної сторінки
+            start_idx = page * NOTES_PER_PAGE
+            end_idx = min(start_idx + NOTES_PER_PAGE, total_notes)
+            notes = all_notes[start_idx:end_idx]
+            
+            for note in notes:
+                is_favorite = knowledge_base_manager.is_favorite(user_id, note['id'])
+                star = "⭐ " if is_favorite else ""
+                category_text = f" | {note['category']}" if note['category'] else ""
+                tags_text = f" | Теги: {note['tags']}" if note['tags'] else ""
+                message_text += (
+                    f"📄 {star}<b>{note['title']}</b>{category_text}{tags_text}\n"
+                    f"Автор: {note['author_name'] or 'Невідомо'}\n\n"
+                )
+            
+            keyboard_buttons = []
+            
+            # Кнопка "Мої закладки"
+            favorites_count = knowledge_base_manager.get_favorite_notes_count(user_id)
+            keyboard_buttons.append([InlineKeyboardButton(f"⭐ Мої закладки ({favorites_count})", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "favorites_page:0"))])
+            
+            # Додаємо навігацію по сторінках, якщо є більше однієї сторінки
+            if total_pages > 1:
+                nav_buttons = []
+                if page > 0:
+                    nav_buttons.append(InlineKeyboardButton("◀️ Попередня", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, f"knowledge_base_page:{page - 1}")))
+                if page < total_pages - 1:
+                    nav_buttons.append(InlineKeyboardButton("Наступна ▶️", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, f"knowledge_base_page:{page + 1}")))
+                if nav_buttons:
+                    keyboard_buttons.append(nav_buttons)
+            
+            # Кнопки для кожної нотатки
+            for note in notes:
+                keyboard_buttons.append([InlineKeyboardButton(
+                    f"📄 {note['title'][:30]}...",
+                    callback_data=csrf_manager.add_csrf_to_callback_data(user_id, f"view_note:{note['id']}")
+                )])
+            
+            keyboard_buttons.extend([
+                [InlineKeyboardButton("➕ Створити нотатку", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "create_note"))],
+                [InlineKeyboardButton("⬅️ Назад", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "menu"))]
+            ])
+            keyboard = InlineKeyboardMarkup(keyboard_buttons)
+        
+        # Підтримка як команди, так і callback
+        if update.message:
+            await update.message.reply_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+        elif update.callback_query:
+            try:
+                await update.callback_query.edit_message_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+            except Exception as edit_error:
+                try:
+                    await update.callback_query.message.reply_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+                except Exception as reply_error:
+                    logger.log_error(f"Помилка відправки повідомлення: {reply_error}")
+    except Exception as e:
+        logger.log_error(f"Помилка в knowledge_base_command: {e}")
+        error_msg = "❌ Помилка при отриманні нотаток. Спробуйте пізніше."
+        if update.message:
+            await update.message.reply_text(error_msg)
+        elif update.callback_query:
+            await update.callback_query.edit_message_text(error_msg)
+
+
+async def show_favorites_command(update: Update, context: ContextTypes.DEFAULT_TYPE, page: int = 0) -> None:
+    """Команда перегляду закладок з пагінацією"""
+    try:
+        user_id = update.effective_user.id if update.effective_user else update.callback_query.from_user.id
+        
+        if not auth_manager.is_user_allowed(user_id):
+            logger.log_unauthorized_access_attempt(user_id, "/favorites")
+            error_msg = "❌ У вас немає доступу до системи."
+            if update.message:
+                await update.message.reply_text(error_msg)
+            elif update.callback_query:
+                await update.callback_query.edit_message_text(error_msg)
+            return
+        
+        # Перевіряємо права доступу
+        with get_session() as session:
+            user = session.query(User).filter(User.user_id == user_id).first()
+            if not user or (not user.notifications_enabled and user.role != 'admin'):
+                error_msg = "❌ У вас немає доступу до бази знань."
+                if update.message:
+                    await update.message.reply_text(error_msg)
+                elif update.callback_query:
+                    await update.callback_query.edit_message_text(error_msg)
+                return
+        
+        knowledge_base_manager = get_knowledge_base_manager()
+        all_favorites = knowledge_base_manager.get_user_favorites(user_id, limit=None)
+        
+        total_notes = len(all_favorites)
+        total_pages = (total_notes + NOTES_PER_PAGE - 1) // NOTES_PER_PAGE if total_notes > 0 else 0
+        
+        message_text = f"⭐ <b>Мої закладки ({total_notes})</b>\n"
+        if total_pages > 1:
+            message_text += f"<i>Сторінка {page + 1} з {total_pages}</i>\n"
+        message_text += "\n"
+        
+        if not all_favorites:
+            message_text = "⭐ У вас поки немає закладок.\n\nДодайте нотатки в обрані!"
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("📚 База знань", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "knowledge_base"))],
+                [InlineKeyboardButton("⬅️ Назад", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "menu"))]
+            ])
+        else:
+            # Обчислюємо індекси для поточної сторінки
+            start_idx = page * NOTES_PER_PAGE
+            end_idx = min(start_idx + NOTES_PER_PAGE, total_notes)
+            notes = all_favorites[start_idx:end_idx]
+            
+            for note in notes:
+                category_text = f" | {note['category']}" if note['category'] else ""
+                tags_text = f" | Теги: {note['tags']}" if note['tags'] else ""
+                message_text += (
+                    f"⭐ <b>{note['title']}</b>{category_text}{tags_text}\n"
+                    f"Автор: {note['author_name'] or 'Невідомо'}\n\n"
+                )
+            
+            keyboard_buttons = []
+            
+            # Додаємо навігацію по сторінках, якщо є більше однієї сторінки
+            if total_pages > 1:
+                nav_buttons = []
+                if page > 0:
+                    nav_buttons.append(InlineKeyboardButton("◀️ Попередня", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, f"favorites_page:{page - 1}")))
+                if page < total_pages - 1:
+                    nav_buttons.append(InlineKeyboardButton("Наступна ▶️", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, f"favorites_page:{page + 1}")))
+                if nav_buttons:
+                    keyboard_buttons.append(nav_buttons)
+            
+            # Кнопки для кожної нотатки
+            for note in notes:
+                keyboard_buttons.append([InlineKeyboardButton(
+                    f"⭐ {note['title'][:30]}...",
+                    callback_data=csrf_manager.add_csrf_to_callback_data(user_id, f"view_note:{note['id']}")
+                )])
+            
+            keyboard_buttons.extend([
+                [InlineKeyboardButton("📚 Всі нотатки", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "knowledge_base"))],
+                [InlineKeyboardButton("⬅️ Назад", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "menu"))]
+            ])
+            keyboard = InlineKeyboardMarkup(keyboard_buttons)
+        
+        # Підтримка як команди, так і callback
+        if update.message:
+            await update.message.reply_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+        elif update.callback_query:
+            try:
+                await update.callback_query.edit_message_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+            except Exception as edit_error:
+                try:
+                    await update.callback_query.message.reply_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+                except Exception as reply_error:
+                    logger.log_error(f"Помилка відправки повідомлення: {reply_error}")
+        
+    except Exception as e:
+        logger.log_error(f"Помилка в show_favorites_command: {e}")
+        error_msg = "❌ Помилка при завантаженні закладок."
+        if update.message:
+            await update.message.reply_text(error_msg)
+        elif update.callback_query:
+            await update.callback_query.edit_message_text(error_msg)
+
+
+async def toggle_favorite_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, note_id: int) -> None:
+    """Обробка перемикання статусу закладки"""
+    try:
+        knowledge_base_manager = get_knowledge_base_manager()
+        note = knowledge_base_manager.get_note(note_id)
+        
+        if not note:
+            await update.callback_query.answer("❌ Нотатку не знайдено", show_alert=True)
+            return
+        
+        is_favorite = knowledge_base_manager.is_favorite(user_id, note_id)
+        
+        if is_favorite:
+            success = knowledge_base_manager.remove_favorite(user_id, note_id)
+            if success:
+                await update.callback_query.answer("✅ Нотатку видалено з закладок")
+            else:
+                await update.callback_query.answer("❌ Помилка видалення з закладок", show_alert=True)
+        else:
+            success = knowledge_base_manager.add_favorite(user_id, note_id)
+            if success:
+                await update.callback_query.answer("✅ Нотатку додано в закладки")
+            else:
+                await update.callback_query.answer("❌ Помилка додавання в закладки", show_alert=True)
+        
+        # Оновлюємо відображення нотатки
+        await show_note_detail(update, context, user_id, note_id)
+        
+    except Exception as e:
+        logger.log_error(f"Помилка в toggle_favorite_handler: {e}")
+        await update.callback_query.answer("❌ Помилка при зміні статусу закладки", show_alert=True)
+
+
+async def show_note_detail(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, note_id: int) -> None:
+    """Показ деталей нотатки"""
+    try:
+        knowledge_base_manager = get_knowledge_base_manager()
+        note = knowledge_base_manager.get_note(note_id)
+        
+        if not note:
+            await safe_edit_message_text(update.callback_query, "❌ Нотатку не знайдено.")
+            return
+        
+        # Перевіряємо права доступу
+        with get_session() as session:
+            user = session.query(User).filter(User.user_id == user_id).first()
+            if not user or (not user.notifications_enabled and user.role != 'admin'):
+                await safe_edit_message_text(update.callback_query, "❌ У вас немає доступу до бази знань.")
+                return
+            
+            # Зберігаємо значення role до виходу з контексту сесії
+            is_admin = user.role == 'admin'
+        
+        can_edit = knowledge_base_manager.can_edit_note(note_id, user_id, is_admin)
+        
+        message_text = f"📄 <b>{note['title']}</b>\n\n"
+        
+        if note['content']:
+            message_text += f"{note['content']}\n\n"
+        
+        if note['resource_url']:
+            message_text += f"🔗 <a href=\"{note['resource_url']}\">Посилання на ресурс</a>\n\n"
+        
+        if note['category']:
+            message_text += f"📁 Категорія: {note['category']}\n"
+        
+        if note['tags']:
+            message_text += f"🏷️ Теги: {note['tags']}\n"
+        
+        if note['commands']:
+            message_text += f"\n💻 <b>Команди консолі:</b>\n"
+            try:
+                import json
+                # Спробуємо парсити як JSON
+                if note['commands'].startswith('['):
+                    commands_list = json.loads(note['commands'])
+                    for cmd_obj in commands_list:
+                        if isinstance(cmd_obj, dict) and cmd_obj.get('command'):
+                            cmd_text = cmd_obj['command']
+                            desc = cmd_obj.get('description', '')
+                            if desc:
+                                message_text += f"<i>{desc}</i>\n"
+                            message_text += f"<code>{cmd_text}</code>\n"
+                else:
+                    # Старий формат (просто текст)
+                    for cmd in note['commands'].split('\n'):
+                        if cmd.strip():
+                            message_text += f"<code>{cmd.strip()}</code>\n"
+            except (json.JSONDecodeError, ValueError, AttributeError):
+                # Якщо не вдалося парсити, використовуємо старий формат
+                for cmd in note['commands'].split('\n'):
+                    if cmd.strip():
+                        message_text += f"<code>{cmd.strip()}</code>\n"
+        
+        message_text += f"\n👤 Автор: {note['author_name'] or 'Невідомо'}\n"
+        message_text += f"📅 Створено: {note['created_at'][:10] if note['created_at'] else 'Невідомо'}\n"
+        message_text += f"🔄 Оновлено: {note['updated_at'][:10] if note['updated_at'] else 'Невідомо'}"
+        
+        keyboard_buttons = []
+        
+        # Кнопка закладок
+        is_favorite = knowledge_base_manager.is_favorite(user_id, note_id)
+        if is_favorite:
+            keyboard_buttons.append([InlineKeyboardButton("⭐ Видалити з обраних", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, f"toggle_favorite:{note_id}"))])
+        else:
+            keyboard_buttons.append([InlineKeyboardButton("⭐ Додати в обрані", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, f"toggle_favorite:{note_id}"))])
+        
+        if can_edit:
+            keyboard_buttons.append([InlineKeyboardButton("🗑️ Видалити", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, f"delete_note:{note_id}"))])
+        
+        keyboard_buttons.append([InlineKeyboardButton("⬅️ Назад до списку", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "knowledge_base"))])
+        
+        keyboard = InlineKeyboardMarkup(keyboard_buttons)
+        
+        await safe_edit_message_text(update.callback_query, message_text, reply_markup=keyboard, disable_web_page_preview=False)
+        
+    except Exception as e:
+        logger.log_error(f"Помилка в show_note_detail: {e}")
+        await safe_edit_message_text(update.callback_query, "❌ Помилка при перегляді нотатки.")
+
+
+async def create_note_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int) -> None:
+    """Початок створення нотатки"""
+    try:
+        # Перевіряємо права доступу
+        with get_session() as session:
+            user = session.query(User).filter(User.user_id == user_id).first()
+            if not user or (not user.notifications_enabled and user.role != 'admin'):
+                await update.callback_query.edit_message_text("❌ У вас немає доступу до бази знань.")
+                return
+        
+        note_creation_state[user_id] = {
+            'step': 'title',
+            'title': None,
+            'content': None,
+            'resource_url': None,
+            'commands': None,
+            'tags': None,
+            'category': None
+        }
+        
+        message_text = (
+            "📝 <b>Створення нотатки</b>\n\n"
+            "Введіть заголовок нотатки:"
+        )
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("❌ Скасувати", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cancel_note"))]
+        ])
+        
+        await update.callback_query.edit_message_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+        
+    except Exception as e:
+        logger.log_error(f"Помилка в create_note_handler: {e}")
+        await update.callback_query.edit_message_text("❌ Помилка при створенні нотатки.")
+
+
+async def handle_note_title_input(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, title: str) -> None:
+    """Обробка введення заголовка нотатки"""
+    if user_id not in note_creation_state:
+        await update.message.reply_text("❌ Помилка. Почніть спочатку.")
+        return
+    
+    note_creation_state[user_id]['title'] = title.strip()
+    note_creation_state[user_id]['step'] = 'content'
+    
+    message_text = (
+        "📝 <b>Введіть текст нотатки</b>\n\n"
+        "Або надішліть skip, щоб пропустити цей крок."
+    )
+    
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("❌ Скасувати", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cancel_note"))]
+    ])
+    
+    await update.message.reply_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+
+
+async def handle_note_content_input(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, content: str) -> None:
+    """Обробка введення тексту нотатки"""
+    if user_id not in note_creation_state:
+        await update.message.reply_text("❌ Помилка. Почніть спочатку.")
+        return
+    
+    note_creation_state[user_id]['content'] = content.strip() if content.strip() else None
+    note_creation_state[user_id]['step'] = 'resource_url'
+    
+    message_text = (
+        "🔗 <b>Введіть посилання на ресурс</b>\n\n"
+        "Або надішліть skip, щоб пропустити цей крок."
+    )
+    
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("❌ Скасувати", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cancel_note"))]
+    ])
+    
+    await update.message.reply_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+
+
+async def handle_note_url_input(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, url: str) -> None:
+    """Обробка введення посилання"""
+    if user_id not in note_creation_state:
+        await update.message.reply_text("❌ Помилка. Почніть спочатку.")
+        return
+    
+    note_creation_state[user_id]['resource_url'] = url.strip() if url.strip() else None
+    note_creation_state[user_id]['step'] = 'category'
+    
+    message_text = (
+        "📁 <b>Введіть категорію</b>\n\n"
+        "Або надішліть skip, щоб пропустити цей крок."
+    )
+    
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("❌ Скасувати", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cancel_note"))]
+    ])
+    
+    await update.message.reply_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+
+
+async def handle_note_tags_input(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, tags: str) -> None:
+    """Обробка введення тегів"""
+    if user_id not in note_creation_state:
+        await update.message.reply_text("❌ Помилка. Почніть спочатку.")
+        return
+    
+    note_creation_state[user_id]['tags'] = tags.strip() if tags.strip() else None
+    note_creation_state[user_id]['step'] = 'category'
+    
+    message_text = (
+        "📁 <b>Введіть категорію</b>\n\n"
+        "Або надішліть skip, щоб пропустити цей крок."
+    )
+    
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("❌ Скасувати", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cancel_note"))]
+    ])
+    
+    await update.message.reply_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+
+
+async def handle_note_category_input(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, category: str) -> None:
+    """Обробка введення категорії та завершення створення"""
+    if user_id not in note_creation_state:
+        await update.message.reply_text("❌ Помилка. Почніть спочатку.")
+        return
+    
+    note_creation_state[user_id]['category'] = category.strip() if category.strip() else None
+    
+    # Створюємо нотатку (команди та теги додаються тільки через веб-інтерфейс)
+    knowledge_base_manager = get_knowledge_base_manager()
+    note_id = knowledge_base_manager.create_note(
+        title=note_creation_state[user_id]['title'],
+        content=note_creation_state[user_id]['content'],
+        resource_url=note_creation_state[user_id]['resource_url'],
+        commands=None,  # Команди додаються тільки через веб-інтерфейс
+        tags=None,  # Теги не питаємо в Telegram боті
+        category=note_creation_state[user_id]['category'],
+        author_id=user_id
+    )
+    
+    if note_id:
+        # Видаляємо стан
+        del note_creation_state[user_id]
+        
+        await update.message.reply_text("✅ Нотатку створено успішно!")
+        
+        # Показуємо створену нотатку
+        await show_note_detail(update, context, user_id, note_id)
+    else:
+        await update.message.reply_text("❌ Помилка при створенні нотатки.")
+
+
+async def edit_note_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, note_id: int) -> None:
+    """Початок редагування нотатки"""
+    try:
+        knowledge_base_manager = get_knowledge_base_manager()
+        note = knowledge_base_manager.get_note(note_id)
+        
+        if not note:
+            await update.callback_query.edit_message_text("❌ Нотатку не знайдено.")
+            return
+        
+        # Перевіряємо права
+        with get_session() as session:
+            user = session.query(User).filter(User.user_id == user_id).first()
+            if user:
+                # Зберігаємо значення role до виходу з контексту сесії
+                is_admin = user.role == 'admin'
+            else:
+                is_admin = False
+        
+        if not knowledge_base_manager.can_edit_note(note_id, user_id, is_admin):
+            await update.callback_query.edit_message_text("❌ У вас немає прав на редагування цієї нотатки.")
+            return
+        
+        # Для спрощення, редагування через веб-інтерфейс
+        await update.callback_query.edit_message_text(
+            "✏️ <b>Редагування нотатки</b>\n\n"
+            "Для редагування нотатки використовуйте веб-інтерфейс.",
+            parse_mode='HTML'
+        )
+        
+    except Exception as e:
+        logger.log_error(f"Помилка в edit_note_handler: {e}")
+        await update.callback_query.edit_message_text("❌ Помилка при редагуванні нотатки.")
+
+
+async def delete_note_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, note_id: int) -> None:
+    """Видалення нотатки"""
+    try:
+        knowledge_base_manager = get_knowledge_base_manager()
+        note = knowledge_base_manager.get_note(note_id)
+        
+        if not note:
+            await update.callback_query.edit_message_text("❌ Нотатку не знайдено.")
+            return
+        
+        # Перевіряємо права
+        with get_session() as session:
+            user = session.query(User).filter(User.user_id == user_id).first()
+            if user:
+                # Зберігаємо значення role до виходу з контексту сесії
+                is_admin = user.role == 'admin'
+            else:
+                is_admin = False
+        
+        if not knowledge_base_manager.can_edit_note(note_id, user_id, is_admin):
+            await update.callback_query.edit_message_text("❌ У вас немає прав на видалення цієї нотатки.")
+            return
+        
+        if knowledge_base_manager.delete_note(note_id):
+            await update.callback_query.edit_message_text("✅ Нотатку видалено успішно!")
+        else:
+            await update.callback_query.edit_message_text("❌ Помилка при видаленні нотатки.")
+        
+    except Exception as e:
+        logger.log_error(f"Помилка в delete_note_handler: {e}")
+        await update.callback_query.edit_message_text("❌ Помилка при видаленні нотатки.")
+
+
+async def search_notes_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int) -> None:
+    """Пошук нотаток"""
+    try:
+        # Для спрощення, пошук через веб-інтерфейс
+        await update.callback_query.edit_message_text(
+            "🔍 <b>Пошук нотаток</b>\n\n"
+            "Для пошуку нотаток використовуйте веб-інтерфейс.",
+            parse_mode='HTML'
+        )
+        
+    except Exception as e:
+        logger.log_error(f"Помилка в search_notes_handler: {e}")
+        await update.callback_query.edit_message_text("❌ Помилка при пошуку нотаток.")
+
+
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обробка callback запитів"""
     query = update.callback_query
-    await query.answer()
+    try:
+        await query.answer()
+    except BadRequest as e:
+        error_msg = str(e).lower()
+        if 'query is too old' in error_msg or 'query id is invalid' in error_msg:
+            # Застарілий query - просто ігноруємо
+            return
+        else:
+            logger.log_error(f"Помилка відповіді на callback query: {e}")
+            return
+    except Exception as e:
+        logger.log_error(f"Помилка відповіді на callback query: {e}")
+        return
     
     user_id = query.from_user.id
     
@@ -405,10 +1031,10 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                                     }])
                             
                             # Оновлюємо повідомлення
-                            await query.edit_message_text(
+                            await safe_edit_message_text(
+                                query,
                                 poll_text,
-                                reply_markup={'inline_keyboard': keyboard_buttons},
-                                parse_mode='HTML'
+                                reply_markup={'inline_keyboard': keyboard_buttons}
                             )
                     except Exception as e:
                         logger.log_error(f"Помилка оновлення повідомлення опитування: {e}")
@@ -442,21 +1068,21 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     callback_data = csrf_manager.extract_callback_data(user_id, query.data, allow_refresh=has_active_chat)
     if not callback_data:
         logger.log_csrf_expired_token(user_id, query.data)
-        await query.edit_message_text("❌ Помилка безпеки. Спробуйте ще раз.")
+        await safe_edit_message_text(query, "❌ Помилка безпеки. Спробуйте ще раз.")
         return
     
     # Обробка запиту на доступ - дозволяємо неавторизованим користувачам
     if callback_data == "request_access":
         if auth_manager.add_user_request(user_id, query.from_user.username or f"user_{user_id}"):
-            await query.edit_message_text("✅ Ваш запит на доступ відправлено адміністратору.")
+            await safe_edit_message_text(query, "✅ Ваш запит на доступ відправлено адміністратору.")
         else:
-            await query.edit_message_text("ℹ️ Ваш запит вже надіслано. Очікуйте схвалення.")
+            await safe_edit_message_text(query, "ℹ️ Ваш запит вже надіслано. Очікуйте схвалення.")
         return
     
     # Для всіх інших callback потрібен доступ
     if not auth_manager.is_user_allowed(user_id):
         logger.log_unauthorized_access_attempt(user_id, "callback")
-        await query.edit_message_text("❌ У вас немає доступу до системи.")
+        await safe_edit_message_text(query, "❌ У вас немає доступу до системи.")
         return
     
     # Обробка різних callback
@@ -527,7 +1153,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     elif callback_data == "cancel_ticket":
         if user_id in ticket_creation_state:
             del ticket_creation_state[user_id]
-        await query.edit_message_text("❌ Створення заявки скасовано.")
+        await safe_edit_message_text(query, "❌ Створення заявки скасовано.")
     elif callback_data == "new_task":
         await new_task_command(update, context)
     elif callback_data == "tasks_today":
@@ -573,7 +1199,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     elif callback_data == "cancel_task":
         if user_id in task_creation_state:
             del task_creation_state[user_id]
-        await query.edit_message_text("❌ Створення задачі скасовано.")
+        await safe_edit_message_text(query, "❌ Створення задачі скасовано.")
     elif callback_data.startswith("complete_task:"):
         # Обробка закриття задачі
         task_id_str = callback_data.split(":", 1)[1]
@@ -597,6 +1223,37 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 await query.answer("❌ Помилка: стан задачі не знайдено", show_alert=True)
         except ValueError:
             await query.answer("❌ Помилка: некоректний ID задачі", show_alert=True)
+    elif callback_data == "knowledge_base":
+        await knowledge_base_command(update, context, page=0)
+    elif callback_data.startswith("knowledge_base_page:"):
+        page = int(callback_data.split(":")[1])
+        await knowledge_base_command(update, context, page=page)
+    elif callback_data.startswith("view_note:"):
+        note_id = int(callback_data.split(":")[1])
+        await show_note_detail(update, context, user_id, note_id)
+    elif callback_data == "create_note":
+        await create_note_handler(update, context, user_id)
+    elif callback_data.startswith("edit_note_info:"):
+        note_id = int(callback_data.split(":")[1])
+        await query.answer("✏️ Редагування доступне у веб-інтерфейсі", show_alert=True)
+    elif callback_data.startswith("edit_note:"):
+        note_id = int(callback_data.split(":")[1])
+        await edit_note_handler(update, context, user_id, note_id)
+    elif callback_data.startswith("delete_note:"):
+        note_id = int(callback_data.split(":")[1])
+        await delete_note_handler(update, context, user_id, note_id)
+    elif callback_data == "search_notes":
+        await query.answer("🔍 Пошук доступний у веб-інтерфейсі", show_alert=True)
+    elif callback_data == "cancel_note":
+        if user_id in note_creation_state:
+            del note_creation_state[user_id]
+        await safe_edit_message_text(query, "❌ Створення нотатки скасовано.")
+    elif callback_data.startswith("favorites_page:"):
+        page = int(callback_data.split(":")[1])
+        await show_favorites_command(update, context, page=page)
+    elif callback_data.startswith("toggle_favorite:"):
+        note_id = int(callback_data.split(":")[1])
+        await toggle_favorite_handler(update, context, user_id, note_id)
 
 
 async def handle_ticket_type_selection(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, ticket_type: str) -> None:
@@ -1069,7 +1726,7 @@ async def handle_task_title_input(update: Update, context: ContextTypes.DEFAULT_
     
     message_text = (
         "📝 <b>Введіть нотатки</b>\n\n"
-        "Опишіть деталі задачі (або відправте /skip щоб пропустити):"
+        "Опишіть деталі задачі (або відправте skip щоб пропустити):"
     )
     
     keyboard = InlineKeyboardMarkup([
@@ -1640,6 +2297,49 @@ def main():
                 # Чат закрито, видаляємо зі стану
                 del chat_active_for_user[user_id]
                 await update.message.reply_text("❌ Чат закрито. Ви не можете відправляти повідомлення.")
+            return
+        
+        # Обробка створення нотатки
+        if user_id in note_creation_state:
+            state = note_creation_state[user_id]
+            step = state.get('step')
+            
+            if step == 'title':
+                await handle_note_title_input(update, context, user_id, text)
+            elif step == 'content':
+                if text.lower() == '/skip':
+                    state['content'] = None
+                    state['step'] = 'resource_url'
+                    message_text = (
+                        "🔗 <b>Введіть посилання на ресурс</b>\n\n"
+                        "Або надішліть skip, щоб пропустити цей крок."
+                    )
+                    keyboard = InlineKeyboardMarkup([
+                        [InlineKeyboardButton("❌ Скасувати", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cancel_note"))]
+                    ])
+                    await update.message.reply_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+                else:
+                    await handle_note_content_input(update, context, user_id, text)
+            elif step == 'resource_url':
+                if text.lower() == '/skip':
+                    state['resource_url'] = None
+                    state['step'] = 'category'
+                    message_text = (
+                        "📁 <b>Введіть категорію</b>\n\n"
+                        "Або надішліть skip, щоб пропустити цей крок."
+                    )
+                    keyboard = InlineKeyboardMarkup([
+                        [InlineKeyboardButton("❌ Скасувати", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cancel_note"))]
+                    ])
+                    await update.message.reply_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+                else:
+                    await handle_note_url_input(update, context, user_id, text)
+            elif step == 'category':
+                if text.lower() == '/skip':
+                    state['category'] = None
+                else:
+                    state['category'] = text.strip()
+                await handle_note_category_input(update, context, user_id, text)
             return
         
         # Обробка створення задачі

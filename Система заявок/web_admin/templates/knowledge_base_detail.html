@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block title %}{{ note.title }} - База знань{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="mb-0">
+                <i class="bi bi-book"></i> {{ note.title }}
+            </h1>
+            <div class="d-flex gap-2">
+                <form method="POST" action="{{ url_for('knowledge_base_toggle_favorite', note_id=note.id) }}" style="display: inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <button type="submit" class="btn {% if is_favorite %}btn-warning{% else %}btn-outline-warning{% endif %}">
+                        <i class="bi {% if is_favorite %}bi-star-fill{% else %}bi-star{% endif %}"></i>
+                        {% if is_favorite %}Видалити з обраних{% else %}Додати в обрані{% endif %}
+                    </button>
+                </form>
+                {% if can_edit %}
+                <a href="{{ url_for('knowledge_base_edit', note_id=note.id) }}" class="btn btn-primary">
+                    <i class="bi bi-pencil"></i> Редагувати
+                </a>
+                {% endif %}
+                <a href="{{ url_for('knowledge_base') }}" class="btn btn-secondary">
+                    <i class="bi bi-arrow-left"></i> Назад до списку
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                {% if note.content %}
+                <div class="mb-4">
+                    <h5>Опис</h5>
+                    <p class="text-muted">{{ note.content|nl2br }}</p>
+                </div>
+                {% endif %}
+                
+                {% if note.resource_url %}
+                <div class="mb-4">
+                    <h5>Посилання на ресурс</h5>
+                    <a href="{{ note.resource_url }}" target="_blank" class="btn btn-outline-primary">
+                        <i class="bi bi-link-45deg"></i> {{ note.resource_url }}
+                    </a>
+                </div>
+                {% endif %}
+                
+                {% if note.commands %}
+                <div class="mb-4">
+                    <h5>Команди консолі</h5>
+                    {% set commands_list = note.commands|from_json if note.commands.startswith('[') else [] %}
+                    {% if commands_list %}
+                        {% for cmd in commands_list %}
+                        <div class="command-block mb-3">
+                            <div class="card">
+                                <div class="card-body">
+                                    {% if cmd.description %}
+                                    <p class="text-muted small mb-2">{{ cmd.description }}</p>
+                                    {% endif %}
+                                    <div class="d-flex align-items-center bg-dark text-light p-2 rounded">
+                                        <code class="flex-grow-1 me-2 text-light">{{ cmd.command }}</code>
+                                        <button class="btn btn-sm btn-outline-light copy-command-btn" data-command="{{ cmd.command }}" title="Копіювати">
+                                            <i class="bi bi-clipboard"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        {# Підтримка старого формату (просто текст) #}
+                        {% for command in note.commands.split('\n') %}
+                            {% if command.strip() %}
+                            <div class="command-block mb-2">
+                                <div class="d-flex align-items-center bg-dark text-light p-2 rounded">
+                                    <code class="flex-grow-1 me-2 text-light">{{ command.strip() }}</code>
+                                    <button class="btn btn-sm btn-outline-light copy-command-btn" data-command="{{ command.strip() }}" title="Копіювати">
+                                        <i class="bi bi-clipboard"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            {% endif %}
+                        {% endfor %}
+                    {% endif %}
+                </div>
+                {% endif %}
+                
+                <div class="mb-4">
+                    <h5>Метадані</h5>
+                    <div class="d-flex flex-wrap gap-2">
+                        {% if note.category %}
+                        <span class="badge bg-info">
+                            <i class="bi bi-folder"></i> Категорія: {{ note.category }}
+                        </span>
+                        {% endif %}
+                        {% if note.tags %}
+                        <span class="badge bg-secondary">
+                            <i class="bi bi-tags"></i> Теги: {{ note.tags }}
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <div class="mb-4">
+                    <h5>Інформація</h5>
+                    <ul class="list-unstyled">
+                        <li><i class="bi bi-person"></i> <strong>Автор:</strong> {{ note.author_name or 'Невідомо' }}</li>
+                        <li><i class="bi bi-calendar-plus"></i> <strong>Створено:</strong> {{ note.created_at[:19] if note.created_at else 'Невідомо' }}</li>
+                        {% if note.updated_at and note.updated_at != note.created_at %}
+                        <li><i class="bi bi-arrow-clockwise"></i> <strong>Оновлено:</strong> {{ note.updated_at[:19] if note.updated_at else 'Невідомо' }}</li>
+                        {% endif %}
+                    </ul>
+                </div>
+                
+                {% if can_edit %}
+                <div class="mt-4 pt-4 border-top">
+                    <form method="POST" action="{{ url_for('knowledge_base_delete', note_id=note.id) }}" onsubmit="return confirm('Ви впевнені, що хочете видалити цю нотатку?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <button type="submit" class="btn btn-danger">
+                            <i class="bi bi-trash"></i> Видалити нотатку
+                        </button>
+                    </form>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Копіювання команд консолі
+    document.querySelectorAll('.copy-command-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const command = this.dataset.command;
+            try {
+                await navigator.clipboard.writeText(command);
+                const icon = this.querySelector('i');
+                const originalClass = icon.className;
+                icon.className = 'bi bi-check';
+                this.classList.add('btn-success');
+                this.classList.remove('btn-outline-light');
+                
+                setTimeout(() => {
+                    icon.className = originalClass;
+                    this.classList.remove('btn-success');
+                    this.classList.add('btn-outline-light');
+                }, 2000);
+            } catch (err) {
+                alert('Помилка копіювання');
+            }
+        });
+    });
+</script>
+{% endblock %}

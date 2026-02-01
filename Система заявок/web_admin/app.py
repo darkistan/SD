@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from database import init_database, get_session
-from models import User, Company, Ticket, TicketItem, ActiveSession, Log, PendingRequest, Printer, CartridgeType, PrinterCartridgeCompatibility, Contractor, TicketStatus, Poll, PollOption, PollResponse, Announcement, AnnouncementRecipient, TicketChat, Task, Timer, BackupSettings
+from models import User, Company, Ticket, TicketItem, ActiveSession, Log, PendingRequest, Printer, CartridgeType, PrinterCartridgeCompatibility, Contractor, TicketStatus, Poll, PollOption, PollResponse, Announcement, AnnouncementRecipient, TicketChat, Task, Timer, BackupSettings, KnowledgeBaseNote
 from ticket_manager import get_ticket_manager
 from printer_manager import get_printer_manager
 from pdf_report_manager import get_pdf_report_manager
@@ -30,6 +30,7 @@ from chat_manager import get_chat_manager
 from task_manager import get_task_manager
 from timer_manager import get_timer_manager
 from backup_manager import get_backup_manager
+from knowledge_base_manager import get_knowledge_base_manager
 from auth import auth_manager
 from logger import logger
 
@@ -138,6 +139,35 @@ def nl2br_filter(text):
     if not text:
         return ''
     return text.replace('\n', '<br>')
+
+
+@app.context_processor
+def inject_knowledge_base_access():
+    """Додає інформацію про доступ до бази знань в контекст шаблонів"""
+    has_kb_access = False
+    if current_user.is_authenticated:
+        if current_user.is_admin:
+            has_kb_access = True
+        else:
+            with get_session() as session:
+                user = session.query(User).filter(User.user_id == current_user.user_id).first()
+                if user and user.notifications_enabled:
+                    has_kb_access = True
+    return dict(has_kb_access=has_kb_access)
+
+
+@app.template_filter('from_json')
+def from_json_filter(value):
+    """Фільтр Jinja2 для парсингу JSON"""
+    import json
+    if not value:
+        return []
+    try:
+        if isinstance(value, str):
+            return json.loads(value)
+        return value
+    except (json.JSONDecodeError, TypeError):
+        return []
 
 
 @app.template_filter('status_badge_color')
@@ -3919,6 +3949,375 @@ def timer_delete(timer_id):
     except Exception as e:
         logger.log_error(f"Помилка видалення таймера {timer_id}: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
+
+
+def knowledge_base_access_required(f):
+    """Декоратор для перевірки прав доступу до бази знань"""
+    @wraps(f)
+    @login_required
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_admin:
+            with get_session() as session:
+                user = session.query(User).filter(User.user_id == current_user.user_id).first()
+                if not user or not user.notifications_enabled:
+                    flash('Доступ заборонено. Потрібні права адміністратора або увімкнені оповіщення.', 'danger')
+                    return redirect(url_for('dashboard'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+@app.route('/knowledge_base')
+@knowledge_base_access_required
+def knowledge_base():
+    """Головна сторінка бази знань"""
+    try:
+        knowledge_base_manager = get_knowledge_base_manager()
+        
+        # Отримуємо параметри пошуку
+        search_text = request.args.get('search', '').strip()
+        tags = request.args.get('tags', '').strip()
+        category = request.args.get('category', '').strip()
+        date_from_str = request.args.get('date_from', '').strip()
+        date_to_str = request.args.get('date_to', '').strip()
+        
+        # Пагінація
+        page = request.args.get('page', 1, type=int)
+        per_page = 20  # Кількість нотаток на сторінку
+        
+        # Обробка дат
+        date_from = None
+        date_to = None
+        if date_from_str:
+            try:
+                date_from = datetime.strptime(date_from_str, '%Y-%m-%d')
+            except ValueError:
+                pass
+        if date_to_str:
+            try:
+                date_to = datetime.strptime(date_to_str, '%Y-%m-%d')
+                date_to = date_to.replace(hour=23, minute=59, second=59)
+            except ValueError:
+                pass
+        
+        # Отримуємо нотатки
+        if search_text or tags or category or date_from or date_to:
+            # Пошук
+            all_notes = knowledge_base_manager.search_notes(
+                search_text=search_text if search_text else None,
+                tags=tags if tags else None,
+                category=category if category else None,
+                date_from=date_from,
+                date_to=date_to,
+                limit=None
+            )
+        else:
+            # Всі нотатки
+            all_notes = knowledge_base_manager.get_all_notes(limit=None)
+        
+        # Пагінація
+        total_notes = len(all_notes)
+        total_pages = (total_notes + per_page - 1) // per_page if total_notes > 0 else 0
+        
+        start_idx = (page - 1) * per_page
+        end_idx = min(start_idx + per_page, total_notes)
+        notes = all_notes[start_idx:end_idx] if all_notes else []
+        
+        # Отримуємо списки категорій та тегів для фільтрів
+        categories = knowledge_base_manager.get_categories()
+        all_tags = knowledge_base_manager.get_all_tags()
+        
+        # Перевіряємо права на редагування та закладки
+        is_admin = current_user.is_admin
+        for note in notes:
+            note['can_edit'] = knowledge_base_manager.can_edit_note(note['id'], current_user.user_id, is_admin)
+            note['is_favorite'] = knowledge_base_manager.is_favorite(current_user.user_id, note['id'])
+        
+        return render_template(
+            'knowledge_base.html',
+            notes=notes,
+            page=page,
+            total_pages=total_pages,
+            total_notes=total_notes,
+            end_index=min(page * per_page, total_notes),
+            search_text=search_text,
+            tags=tags,
+            category=category,
+            date_from=date_from_str,
+            date_to=date_to_str,
+            categories=categories,
+            all_tags=all_tags,
+            is_admin=is_admin
+        )
+        
+    except Exception as e:
+        logger.log_error(f"Помилка в knowledge_base: {e}")
+        flash('Помилка при завантаженні бази знань.', 'danger')
+        return redirect(url_for('dashboard'))
+
+
+@app.route('/knowledge_base/create', methods=['GET', 'POST'])
+@knowledge_base_access_required
+def knowledge_base_create():
+    """Створення нотатки"""
+    if request.method == 'POST':
+        try:
+            import json
+            title = request.form.get('title', '').strip()
+            content = request.form.get('content', '').strip()
+            resource_url = request.form.get('resource_url', '').strip()
+            commands_json = request.form.get('commands_json', '[]').strip()
+            tags = request.form.get('tags', '').strip()
+            category = request.form.get('category', '').strip()
+            
+            if not title:
+                flash('Заголовок обов\'язковий.', 'danger')
+                return redirect(url_for('knowledge_base'))
+            
+            # Парсимо JSON з команд
+            commands = None
+            if commands_json:
+                try:
+                    commands_list = json.loads(commands_json)
+                    if isinstance(commands_list, list) and len(commands_list) > 0:
+                        commands = commands_json  # Зберігаємо як JSON
+                except json.JSONDecodeError:
+                    pass
+            
+            knowledge_base_manager = get_knowledge_base_manager()
+            note_id = knowledge_base_manager.create_note(
+                title=title,
+                content=content if content else None,
+                resource_url=resource_url if resource_url else None,
+                commands=commands,
+                tags=tags if tags else None,
+                category=category if category else None,
+                author_id=current_user.user_id
+            )
+            
+            if note_id:
+                flash('Нотатку створено успішно.', 'success')
+                return redirect(url_for('knowledge_base'))
+            else:
+                flash('Помилка при створенні нотатки.', 'danger')
+                
+        except Exception as e:
+            logger.log_error(f"Помилка створення нотатки: {e}")
+            flash('Помилка при створенні нотатки.', 'danger')
+    
+    # GET - показуємо форму створення
+    knowledge_base_manager = get_knowledge_base_manager()
+    categories = knowledge_base_manager.get_categories()
+    
+    return render_template('knowledge_base_create.html', categories=categories)
+
+
+@app.route('/knowledge_base/<int:note_id>')
+@knowledge_base_access_required
+def knowledge_base_detail(note_id):
+    """Перегляд нотатки"""
+    try:
+        knowledge_base_manager = get_knowledge_base_manager()
+        note = knowledge_base_manager.get_note(note_id)
+        
+        if not note:
+            flash('Нотатку не знайдено.', 'danger')
+            return redirect(url_for('knowledge_base'))
+        
+        is_admin = current_user.is_admin
+        can_edit = knowledge_base_manager.can_edit_note(note_id, current_user.user_id, is_admin)
+        is_favorite = knowledge_base_manager.is_favorite(current_user.user_id, note_id)
+        
+        return render_template('knowledge_base_detail.html', note=note, can_edit=can_edit, is_admin=is_admin, is_favorite=is_favorite)
+        
+    except Exception as e:
+        logger.log_error(f"Помилка перегляду нотатки {note_id}: {e}")
+        flash('Помилка при перегляді нотатки.', 'danger')
+        return redirect(url_for('knowledge_base'))
+
+
+@app.route('/knowledge_base/<int:note_id>/edit', methods=['GET', 'POST'])
+@knowledge_base_access_required
+def knowledge_base_edit(note_id):
+    """Редагування нотатки"""
+    try:
+        knowledge_base_manager = get_knowledge_base_manager()
+        note = knowledge_base_manager.get_note(note_id)
+        
+        if not note:
+            flash('Нотатку не знайдено.', 'danger')
+            return redirect(url_for('knowledge_base'))
+        
+        # Перевіряємо права
+        is_admin = current_user.is_admin
+        if not knowledge_base_manager.can_edit_note(note_id, current_user.user_id, is_admin):
+            flash('У вас немає прав на редагування цієї нотатки.', 'danger')
+            return redirect(url_for('knowledge_base'))
+        
+        if request.method == 'POST':
+            import json
+            title = request.form.get('title', '').strip()
+            content = request.form.get('content', '').strip()
+            resource_url = request.form.get('resource_url', '').strip()
+            commands_json = request.form.get('commands_json', '[]').strip()
+            tags = request.form.get('tags', '').strip()
+            category = request.form.get('category', '').strip()
+            
+            if not title:
+                flash('Заголовок обов\'язковий.', 'danger')
+                return redirect(url_for('knowledge_base_edit', note_id=note_id))
+            
+            # Парсимо JSON з команд
+            commands = None
+            if commands_json:
+                try:
+                    commands_list = json.loads(commands_json)
+                    if isinstance(commands_list, list) and len(commands_list) > 0:
+                        commands = commands_json  # Зберігаємо як JSON
+                except json.JSONDecodeError:
+                    pass
+            
+            success = knowledge_base_manager.update_note(
+                note_id=note_id,
+                title=title,
+                content=content if content else None,
+                resource_url=resource_url if resource_url else None,
+                commands=commands,
+                tags=tags if tags else None,
+                category=category if category else None
+            )
+            
+            if success:
+                flash('Нотатку оновлено успішно.', 'success')
+                return redirect(url_for('knowledge_base_detail', note_id=note_id))
+            else:
+                flash('Помилка при оновленні нотатки.', 'danger')
+        
+        # GET - показуємо форму редагування
+        import json
+        categories = knowledge_base_manager.get_categories()
+        # Перетворюємо commands в JSON для шаблону, якщо це не JSON
+        if note.get('commands') and not (isinstance(note['commands'], str) and note['commands'].startswith('[')):
+            # Старий формат - конвертуємо в JSON
+            commands_list = []
+            for cmd in note['commands'].split('\n'):
+                if cmd.strip():
+                    commands_list.append({'command': cmd.strip(), 'description': ''})
+            note['commands'] = json.dumps(commands_list) if commands_list else None
+        return render_template('knowledge_base_edit.html', note=note, categories=categories)
+        
+    except Exception as e:
+        logger.log_error(f"Помилка редагування нотатки {note_id}: {e}")
+        flash('Помилка при редагуванні нотатки.', 'danger')
+        return redirect(url_for('knowledge_base'))
+
+
+@app.route('/knowledge_base/<int:note_id>/delete', methods=['POST'])
+@knowledge_base_access_required
+def knowledge_base_delete(note_id):
+    """Видалення нотатки"""
+    try:
+        knowledge_base_manager = get_knowledge_base_manager()
+        note = knowledge_base_manager.get_note(note_id)
+        
+        if not note:
+            flash('Нотатку не знайдено.', 'danger')
+            return redirect(url_for('knowledge_base'))
+        
+        # Перевіряємо права
+        is_admin = current_user.is_admin
+        if not knowledge_base_manager.can_edit_note(note_id, current_user.user_id, is_admin):
+            flash('У вас немає прав на видалення цієї нотатки.', 'danger')
+            return redirect(url_for('knowledge_base'))
+        
+        if knowledge_base_manager.delete_note(note_id):
+            flash('Нотатку видалено успішно.', 'success')
+        else:
+            flash('Помилка при видаленні нотатки.', 'danger')
+        
+    except Exception as e:
+        logger.log_error(f"Помилка видалення нотатки {note_id}: {e}")
+        flash('Помилка при видаленні нотатки.', 'danger')
+    
+    return redirect(url_for('knowledge_base'))
+
+
+@app.route('/knowledge_base/favorites')
+@knowledge_base_access_required
+def knowledge_base_favorites():
+    """Сторінка "Мої закладки" """
+    try:
+        knowledge_base_manager = get_knowledge_base_manager()
+        
+        # Пагінація
+        page = request.args.get('page', 1, type=int)
+        per_page = 20  # Кількість нотаток на сторінку
+        
+        # Отримуємо закладки користувача
+        all_favorites = knowledge_base_manager.get_user_favorites(current_user.user_id, limit=None)
+        
+        # Пагінація
+        total_notes = len(all_favorites)
+        total_pages = (total_notes + per_page - 1) // per_page if total_notes > 0 else 0
+        
+        start_idx = (page - 1) * per_page
+        end_idx = min(start_idx + per_page, total_notes)
+        notes = all_favorites[start_idx:end_idx] if all_favorites else []
+        
+        # Перевіряємо права на редагування
+        is_admin = current_user.is_admin
+        for note in notes:
+            note['can_edit'] = knowledge_base_manager.can_edit_note(note['id'], current_user.user_id, is_admin)
+            note['is_favorite'] = True  # Всі нотатки тут вже в закладках
+        
+        return render_template(
+            'knowledge_base_favorites.html',
+            notes=notes,
+            page=page,
+            total_pages=total_pages,
+            total_notes=total_notes,
+            end_index=min(page * per_page, total_notes),
+            is_admin=is_admin
+        )
+        
+    except Exception as e:
+        logger.log_error(f"Помилка в knowledge_base_favorites: {e}")
+        flash('Помилка при завантаженні закладок.', 'danger')
+        return redirect(url_for('knowledge_base'))
+
+
+@app.route('/knowledge_base/<int:note_id>/toggle_favorite', methods=['POST'])
+@knowledge_base_access_required
+def knowledge_base_toggle_favorite(note_id):
+    """Перемикання статусу закладки"""
+    try:
+        knowledge_base_manager = get_knowledge_base_manager()
+        note = knowledge_base_manager.get_note(note_id)
+        
+        if not note:
+            flash('Нотатку не знайдено.', 'danger')
+            return redirect(url_for('knowledge_base'))
+        
+        is_favorite = knowledge_base_manager.is_favorite(current_user.user_id, note_id)
+        
+        if is_favorite:
+            success = knowledge_base_manager.remove_favorite(current_user.user_id, note_id)
+            if success:
+                flash('Нотатку видалено з закладок.', 'info')
+        else:
+            success = knowledge_base_manager.add_favorite(current_user.user_id, note_id)
+            if success:
+                flash('Нотатку додано в закладки.', 'success')
+        
+        # Перенаправляємо на попередню сторінку або на детальний перегляд
+        referer = request.headers.get('Referer')
+        if referer and 'knowledge_base' in referer:
+            return redirect(referer)
+        return redirect(url_for('knowledge_base_detail', note_id=note_id))
+        
+    except Exception as e:
+        logger.log_error(f"Помилка перемикання закладки {note_id}: {e}")
+        flash('Помилка при зміні статусу закладки.', 'danger')
+        return redirect(url_for('knowledge_base'))
 
 
 # Ініціалізація автоматичного резервного копіювання при старті

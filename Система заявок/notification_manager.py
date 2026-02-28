@@ -364,11 +364,11 @@ class NotificationManager:
             # Якщо завдань немає, не відправляємо повідомлення
             return False
         
-        message = "📋 <b>Завдання на сьогодні:</b>\n\n"
+        message = "📋 <b>Задачи на сегодня:</b>\n\n"
         
         for task in tasks:
             list_name = task.get('list_name', '')
-            title = task.get('title', 'Немає назви')
+            title = task.get('title', 'Без названия')
             notes = task.get('notes', '')
             
             if list_name:

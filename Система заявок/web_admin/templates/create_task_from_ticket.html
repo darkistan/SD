@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}Створити задачу з заявки #{{ ticket_id }} - Система заявок{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="bi bi-list-check"></i> Створити задачу в To-Do з заявки #{{ ticket_id }}
+        </h1>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('create_task_from_ticket', ticket_id=ticket_id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+                    <div class="mb-3">
+                        <label class="form-label">Назва <span class="text-danger">*</span></label>
+                        <input type="text" name="title" class="form-control" value="{{ default_title }}" required maxlength="500">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Нотатки</label>
+                        <textarea name="notes" class="form-control" rows="4">{% if default_notes %}{{ default_notes }}{% endif %}</textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Термін</label>
+                        <input type="date" name="due_date" class="form-control">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Повторення</label>
+                        <select name="recurrence_type" class="form-select">
+                            <option value="">Без повторення</option>
+                            <option value="DAILY">Щодня</option>
+                            <option value="WEEKDAYS">Робочі дні (Пн-Пт)</option>
+                            <option value="WEEKLY">Щотижня</option>
+                            <option value="MONTHLY">Щомісяця</option>
+                            <option value="YEARLY">Щорічно</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Список</label>
+                        <select name="list_name" class="form-select">
+                            <option value="">Без списку</option>
+                            {% for list in all_lists %}
+                            <option value="{{ list }}">{{ list }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-plus-circle"></i> Створити задачу
+                        </button>
+                        <a href="{{ url_for('ticket_detail', ticket_id=ticket_id) }}" class="btn btn-secondary">Скасувати</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

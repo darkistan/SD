@@ -683,6 +683,82 @@ def ticket_detail(ticket_id):
                          has_telegram=has_telegram)
 
 
+@app.route('/ticket/<int:ticket_id>/create_task', methods=['GET', 'POST'])
+@login_required
+def create_task_from_ticket(ticket_id):
+    """Створення задачі в To-Do на основі заявки"""
+    ticket_manager = get_ticket_manager()
+    ticket = ticket_manager.get_ticket(ticket_id)
+
+    if not ticket:
+        flash('Заявка не знайдена.', 'danger')
+        return redirect(url_for('tickets'))
+
+    # Перевірка доступу (як у ticket_detail)
+    if not current_user.is_admin and ticket['user_id'] != current_user.user_id:
+        flash('Доступ заборонено.', 'danger')
+        return redirect(url_for('tickets'))
+
+    if request.method == 'POST':
+        title = request.form.get('title', '').strip()
+        if not title:
+            flash('Назва завдання обов\'язкова!', 'danger')
+            return redirect(url_for('create_task_from_ticket', ticket_id=ticket_id))
+
+        notes = request.form.get('notes', '').strip() or None
+        list_name = request.form.get('list_name', '').strip() or None
+
+        due_date_str = request.form.get('due_date', '').strip()
+        due_date = None
+        if due_date_str:
+            try:
+                due_date = datetime.strptime(due_date_str, '%Y-%m-%d')
+            except ValueError:
+                flash('Невірний формат дати!', 'danger')
+                return redirect(url_for('create_task_from_ticket', ticket_id=ticket_id))
+
+        recurrence_type = request.form.get('recurrence_type', '').strip()
+        recurrence_type = None if not recurrence_type else recurrence_type
+
+        task_manager = get_task_manager()
+        task_id = task_manager.create_task(
+            title=title,
+            notes=notes,
+            due_date=due_date,
+            list_name=list_name,
+            recurrence_type=recurrence_type,
+            user_id=current_user.user_id
+        )
+
+        if task_id:
+            flash('Задачу створено!', 'success')
+            return redirect(url_for('todo'))
+        flash('Помилка створення завдання!', 'danger')
+        return redirect(url_for('create_task_from_ticket', ticket_id=ticket_id))
+
+    # GET: формуємо значення за замовчуванням з заявки
+    type_ua = ticket_type_ua_filter(ticket['ticket_type'])
+    default_title = f"Заявка #{ticket_id} — {type_ua}"
+    parts = []
+    if ticket.get('comment'):
+        parts.append(ticket['comment'])
+    ticket_url = request.host_url.rstrip('/') + url_for('ticket_detail', ticket_id=ticket_id)
+    parts.append(f"Посилання на заявку: {ticket_url}")
+    default_notes = "\n".join(parts) if parts else None
+
+    task_manager = get_task_manager()
+    all_lists = task_manager.get_all_lists() or []
+
+    return render_template(
+        'create_task_from_ticket.html',
+        ticket=ticket,
+        ticket_id=ticket_id,
+        default_title=default_title,
+        default_notes=default_notes,
+        all_lists=all_lists
+    )
+
+
 @app.route('/ticket/<int:ticket_id>/chat')
 @admin_required
 def ticket_chat(ticket_id):

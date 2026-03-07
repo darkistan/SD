@@ -95,10 +95,12 @@
 <div class="row mb-3">
     <div class="col-12">
         <div class="card border-primary">
-            <div class="card-header bg-primary text-white">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center" data-bs-toggle="collapse" data-bs-target="#addWebUserCollapse" aria-expanded="false" aria-controls="addWebUserCollapse" style="cursor: pointer;">
                 <h5 class="mb-0"><i class="bi bi-person-plus"></i> Додати веб-користувача (без Telegram)</h5>
+                <i class="bi bi-chevron-down collapse-icon"></i>
             </div>
-            <div class="card-body">
+            <div id="addWebUserCollapse" class="collapse">
+                <div class="card-body">
                 <form method="POST" action="{{ url_for('add_web_user') }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <div class="row">
@@ -139,6 +141,7 @@
                         </div>
                     </div>
                 </form>
+            </div>
             </div>
         </div>
     </div>
@@ -289,6 +292,13 @@
                                                 <i class="bi {% if user.notifications_enabled %}bi-bell-fill{% else %}bi-bell-slash{% endif %}"></i> Оповіщення
                                             </button>
                                         </form>
+                                        {% if user.notifications_enabled %}
+                                        <form method="POST" action="{{ url_for('set_morning_notification_time', user_id=user.user_id) }}" style="display:inline;" class="d-inline-block ms-1 align-middle">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                            <input type="time" name="time" class="form-control form-control-sm d-inline-block" style="width:6em;" value="{{ user.morning_notification_time or '' }}" title="Час ранкового оповіщення (HH:MM)">
+                                            <button type="submit" class="btn btn-sm btn-outline-secondary ms-1" title="Зберегти час">OK</button>
+                                        </form>
+                                        {% endif %}
                                         {% else %}
                                         <button type="button" class="btn btn-sm btn-secondary" disabled title="Веб-користувачі не отримують оповіщення в Telegram">
                                             <i class="bi bi-bell-slash"></i> Оповіщення

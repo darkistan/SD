@@ -345,7 +345,8 @@ class NotificationManager:
     def send_todo_tasks_notification(
         self,
         user_id: int,
-        tasks: list
+        tasks: list,
+        header_text: Optional[str] = None
     ) -> bool:
         """
         Відправка ранкового звіту про завдання на сьогодні
@@ -353,6 +354,7 @@ class NotificationManager:
         Args:
             user_id: ID користувача
             tasks: Список завдань на сьогодні
+            header_text: Текст шапки повідомлення (за замовчуванням «Задачи на сегодня»)
             
         Returns:
             True якщо уведомлення відправлено
@@ -364,7 +366,12 @@ class NotificationManager:
             # Якщо завдань немає, не відправляємо повідомлення
             return False
         
-        message = "📋 <b>Задачи на сегодня:</b>\n\n"
+        # Нормалізація: старий український заголовок зберігаємо як російський
+        raw_header = (header_text or "Задачи на сегодня").strip()
+        if raw_header in ("Завдання на сьогодні", "Завдання на сьогодні:"):
+            raw_header = "Задачи на сегодня"
+        header = raw_header[:200] if len(raw_header) > 200 else raw_header
+        message = f"📋 <b>{header}</b>\n\n"
         
         for task in tasks:
             list_name = task.get('list_name', '')

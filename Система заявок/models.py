@@ -51,7 +51,8 @@ class User(Base):
     full_name = Column(String(200))
     password_hash = Column(String(255), nullable=True)
     company_id = Column(Integer, ForeignKey('companies.id'), nullable=True, index=True)
-    
+    morning_notification_time = Column(String(5), nullable=True)  # Час ранкового оповіщення "HH:MM", NULL = 09:00
+
     # Relationship
     company = relationship('Company', backref='users')
     

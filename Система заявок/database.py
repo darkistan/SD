@@ -12,7 +12,7 @@ from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.exc import OperationalError, DatabaseError
 from dotenv import load_dotenv
 
-from models import Base
+from models import Base, BotConfig
 from logger import logger
 
 # Завантажуємо змінні середовища
@@ -105,7 +105,8 @@ class DatabaseManager:
             self.migrate_create_user_printers_table()
             self.migrate_create_tasks_table()
             self.migrate_create_timers_table()
-            
+            self.migrate_add_morning_notification_time_to_user()
+
             # Заповнюємо справочник статусів (якщо таблиця порожня)
             self.migrate_create_ticket_statuses()
             
@@ -416,6 +417,20 @@ class DatabaseManager:
         except Exception as e:
             logger.log_error(f"Помилка міграції створення timers: {e}")
     
+    def migrate_add_morning_notification_time_to_user(self):
+        """Міграція: додавання колонки morning_notification_time до таблиці users"""
+        try:
+            with self.engine.begin() as conn:
+                inspector = inspect(self.engine)
+                if 'users' not in inspector.get_table_names():
+                    return
+                columns = [col['name'] for col in inspector.get_columns('users')]
+                if 'morning_notification_time' not in columns:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN morning_notification_time VARCHAR(5)"))
+                    logger.log_info("Додано колонку morning_notification_time до users")
+        except Exception as e:
+            logger.log_error(f"Помилка міграції додавання morning_notification_time: {e}")
+    
     def migrate_add_commands_to_knowledge_base_notes(self):
         """Міграція: додавання колонки commands до таблиці knowledge_base_notes"""
         try:
@@ -567,4 +582,52 @@ def get_session(max_retries: int = 3) -> Generator[Session, None, None]:
     
     with _db_manager.get_session(max_retries=max_retries) as session:
         yield session
+
+
+def get_bot_config(key: str, default: Optional[str] = None) -> Optional[str]:
+    """
+    Отримання значення з bot_config за ключем.
+    
+    Args:
+        key: Ключ запису
+        default: Значення за замовчуванням, якщо запис не знайдено
+    
+    Returns:
+        Значення з БД або default
+    """
+    if _db_manager is None:
+        return default
+    try:
+        with get_session() as session:
+            row = session.query(BotConfig).filter(BotConfig.key == key).first()
+            return row.value if row and row.value else default
+    except Exception as e:
+        logger.log_error(f"Помилка читання bot_config {key}: {e}")
+        return default
+
+
+def set_bot_config(key: str, value: str, description: Optional[str] = None) -> None:
+    """
+    Збереження значення в bot_config (оновлення або вставка).
+    
+    Args:
+        key: Ключ запису
+        value: Значення
+        description: Опціональний опис
+    """
+    if _db_manager is None:
+        raise RuntimeError("База даних не ініціалізована. Викличте init_database()")
+    try:
+        with get_session() as session:
+            row = session.query(BotConfig).filter(BotConfig.key == key).first()
+            if row:
+                row.value = value
+                if description is not None:
+                    row.description = description
+            else:
+                new_row = BotConfig(key=key, value=value, description=description)
+                session.add(new_row)
+    except Exception as e:
+        logger.log_error(f"Помилка збереження bot_config {key}: {e}")
+        raise
 

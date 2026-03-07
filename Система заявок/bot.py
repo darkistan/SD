@@ -24,7 +24,7 @@ from auth import auth_manager
 from logger import logger
 from csrf_manager import csrf_manager
 from input_validator import input_validator
-from database import init_database, get_session
+from database import init_database, get_session, get_bot_config
 from models import User, Company
 from ticket_manager import get_ticket_manager
 from printer_manager import get_printer_manager
@@ -2462,58 +2462,58 @@ def main():
         thread.start()
         logger.log_info("Автоматичне закриття неактивних чатів запущено через threading")
     
-    # Ранкові сповіщення про завдання TO DO
+    # Ранкові сповіщення про завдання TO DO (персональний час для кожного користувача)
     def send_morning_todo_notifications():
-        """Відправка ранкових сповіщень про завдання на сьогодні користувачам з увімкненими оповіщеннями"""
+        """Відправка ранкових сповіщень про завдання на сьогодні; кожен користувач отримує в свій заданий час"""
         import time as time_module
         from notification_manager import get_notification_manager
         
+        default_time = "09:00"
+        
         while True:
             try:
-                # Розраховуємо час до наступної 09:00
+                time_module.sleep(60)  # Перевірка кожну хвилину
+                
                 now = datetime.now()
-                target_time = dt_time(9, 0)  # 09:00
+                current_hm = now.strftime("%H:%M")
                 
-                if now.time() < target_time:
-                    # Якщо ще не 09:00 сьогодні, чекаємо до 09:00
-                    next_run = datetime.combine(now.date(), target_time)
-                else:
-                    # Якщо вже пройшло 09:00, чекаємо до 09:00 завтра
-                    next_run = datetime.combine(now.date() + timedelta(days=1), target_time)
-                
-                wait_seconds = (next_run - now).total_seconds()
-                
-                # Чекаємо до 09:00
-                time_module.sleep(wait_seconds)
-                
-                # Відправляємо сповіщення
                 task_manager = get_task_manager()
                 notification_manager = get_notification_manager()
+                header_text = get_bot_config("todo_morning_notification_header", "Задачи на сегодня")
+                # Нормалізація: старий український заголовок у конфігу — показувати російський
+                if header_text in ("Завдання на сьогодні", "Завдання на сьогодні:"):
+                    header_text = "Задачи на сегодня"
                 
-                # Отримуємо всіх користувачів з увімкненими оповіщеннями про задачі
                 with get_session() as session:
                     users = session.query(User).filter(
                         User.notifications_enabled == True,
-                        User.user_id > 0  # Тільки Telegram користувачі
+                        User.user_id > 0
                     ).all()
                     
-                    # Отримуємо завдання на сьогодні
-                    today_tasks = task_manager.get_tasks_for_today()
+                    to_notify = [
+                        u for u in users
+                        if (u.morning_notification_time or default_time) == current_hm
+                    ]
                     
-                    if today_tasks:
-                        # Відправляємо кожному користувачу з увімкненими оповіщеннями
-                        for user in users:
-                            try:
-                                notification_manager.send_todo_tasks_notification(
-                                    user_id=user.user_id,
-                                    tasks=today_tasks
-                                )
-                            except Exception as e:
-                                logger.log_error(f"Помилка відправки ранкового звіту користувачу {user.user_id}: {e}")
+                    if not to_notify:
+                        continue
+                    
+                    today_tasks = task_manager.get_tasks_for_today()
+                    if not today_tasks:
+                        continue
+                    
+                    for user in to_notify:
+                        try:
+                            notification_manager.send_todo_tasks_notification(
+                                user_id=user.user_id,
+                                tasks=today_tasks,
+                                header_text=header_text
+                            )
+                        except Exception as e:
+                            logger.log_error(f"Помилка відправки ранкового звіту користувачу {user.user_id}: {e}")
                 
             except Exception as e:
                 logger.log_error(f"Помилка в ранкових сповіщеннях про завдання: {e}")
-                # У разі помилки чекаємо 1 годину перед наступною спробою
                 time_module.sleep(3600)
     
     todo_thread = threading.Thread(target=send_morning_todo_notifications, daemon=True)

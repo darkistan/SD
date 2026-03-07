@@ -77,6 +77,27 @@
     </div>
 </div>
 
+<!-- Налаштування ранкового оповіщення в Telegram -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5><i class="bi bi-bell"></i> Налаштування ранкового оповіщення в Telegram</h5>
+    </div>
+    <div class="card-body">
+        <p class="text-muted">Текст заголовка щоденного сповіщення про задачі (надсилається о заданому часу користувачам з увімкненими оповіщеннями). Зараз у повідомленні: <strong>📋 {{ todo_notification_header }}</strong></p>
+        <form method="POST" action="{{ url_for('set_todo_notification_header') }}" class="row g-2 align-items-end">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <div class="col-md-8">
+                <label class="form-label">Шапка повідомлення</label>
+                <input type="text" name="header" class="form-control" value="{{ todo_notification_header }}" placeholder="Задачи на сегодня" maxlength="200">
+                <small class="text-muted">Наприклад: Задачи на сегодня</small>
+            </div>
+            <div class="col-md-4">
+                <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> Зберегти шапку</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- Інформація про резервне копіювання -->
 <div class="card mb-4">
     <div class="card-header">

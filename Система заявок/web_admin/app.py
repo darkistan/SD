@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 # Додаємо батьківську директорію в Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from database import init_database, get_session
+from database import init_database, get_session, get_bot_config, set_bot_config
 from models import User, Company, Ticket, TicketItem, ActiveSession, Log, PendingRequest, Printer, CartridgeType, PrinterCartridgeCompatibility, Contractor, TicketStatus, Poll, PollOption, PollResponse, Announcement, AnnouncementRecipient, TicketChat, Task, Timer, BackupSettings, KnowledgeBaseNote
 from ticket_manager import get_ticket_manager
 from printer_manager import get_printer_manager
@@ -1375,6 +1375,42 @@ def update_user_company(user_id):
     return redirect(url_for('users'))
 
 
+@app.route('/users/<int:user_id>/set_morning_notification_time', methods=['POST'])
+@admin_required
+def set_morning_notification_time(user_id):
+    """Встановлення часу ранкового оповіщення для користувача"""
+    time_val = request.form.get('time', '').strip()
+    # Дозволяємо порожнє — тоді за замовчуванням 09:00
+    if time_val:
+        import re
+        if not re.match(r'^([01]?\d|2[0-3]):([0-5]\d)$', time_val):
+            flash('Невірний формат часу. Використовуйте HH:MM (наприклад 09:00).', 'danger')
+            return redirect(url_for('users'))
+    with get_session() as session:
+        user = session.query(User).filter(User.user_id == user_id).first()
+        if not user:
+            flash('Користувача не знайдено.', 'danger')
+            return redirect(url_for('users'))
+        user.morning_notification_time = time_val if time_val else None
+        session.commit()
+        flash('Час ранкового оповіщення збережено.', 'success')
+    return redirect(url_for('users'))
+
+
+@app.route('/users/set_todo_notification_header', methods=['POST'])
+@admin_required
+def set_todo_notification_header():
+    """Збереження шапки ранкового оповіщення в Telegram"""
+    header = request.form.get('header', '').strip()
+    # Нормалізація: старий український варіант зберігаємо як російський
+    if header in ("Завдання на сьогодні", "Завдання на сьогодні:"):
+        header = "Задачи на сегодня"
+    value = header if header else "Задачи на сегодня"
+    set_bot_config("todo_morning_notification_header", value)
+    flash('Шапку оповіщення збережено.', 'success')
+    return redirect(url_for('backup'))
+
+
 @app.route('/users/<int:user_id>/toggle_notifications', methods=['POST'])
 @admin_required
 def toggle_user_notifications(user_id):
@@ -2222,6 +2258,15 @@ def clear_old_logs():
     return redirect(url_for('logs'))
 
 
+def _todo_header_for_display(value):
+    """Повертає заголовок для відображення; старий український варіант замінює на російський."""
+    if not value or not (value := value.strip()):
+        return "Задачи на сегодня"
+    if value in ("Завдання на сьогодні", "Завдання на сьогодні:"):
+        return "Задачи на сегодня"
+    return value
+
+
 @app.route('/backup')
 @admin_required
 def backup():
@@ -2256,9 +2301,10 @@ def backup():
             # Від'єднуємо об'єкт від сесії, щоб він міг використовуватися після закриття сесії
             session.expunge(settings)
         
-        return render_template('backup.html', 
+        return render_template('backup.html',
                              settings=settings,
-                             backups=backups)
+                             backups=backups,
+                             todo_notification_header=_todo_header_for_display(get_bot_config("todo_morning_notification_header") or "Задачи на сегодня"))
     except Exception as e:
         logger.log_error(f"Помилка завантаження сторінки резервного копіювання: {e}")
         flash('Помилка завантаження сторінки резервного копіювання.', 'danger')

@@ -413,7 +413,8 @@ class TicketManager:
         date_to: Optional[datetime] = None,
         sort_by: Optional[str] = None,
         sort_order: str = 'desc',
-        limit: Optional[int] = 100
+        limit: Optional[int] = 100,
+        exclude_closed: bool = False
     ) -> List[Dict[str, Any]]:
         """
         Отримання заявок користувача
@@ -450,6 +451,9 @@ class TicketManager:
                     # Додаємо 1 день, щоб включити весь день
                     date_to_end = date_to + timedelta(days=1)
                     query = query.filter(Ticket.created_at < date_to_end)
+                
+                if exclude_closed:
+                    query = query.filter(~Ticket.status.in_(['CLOSED', 'CANCELLED']))
                 
                 # Сортування
                 order_column = None
@@ -494,7 +498,8 @@ class TicketManager:
         date_to: Optional[datetime] = None,
         sort_by: Optional[str] = None,
         sort_order: str = 'desc',
-        limit: int = 1000
+        limit: int = 1000,
+        exclude_closed: bool = False
     ) -> List[Dict[str, Any]]:
         """
         Отримання всіх заявок (для адміністратора)
@@ -538,6 +543,9 @@ class TicketManager:
                     # Додаємо 1 день, щоб включити весь день
                     date_to_end = date_to + timedelta(days=1)
                     query = query.filter(Ticket.created_at < date_to_end)
+                
+                if exclude_closed:
+                    query = query.filter(~Ticket.status.in_(['CLOSED', 'CANCELLED']))
                 
                 # Сортування
                 order_column = None

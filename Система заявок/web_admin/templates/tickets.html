@@ -32,6 +32,13 @@
                     <form method="GET" action="{{ url_for('tickets') }}" class="row g-3">
                     <input type="hidden" name="sort_by" value="{{ sort_by }}">
                     <input type="hidden" name="sort_order" value="{{ sort_order }}">
+                    <input type="hidden" name="hide_closed" value="0">
+                    <div class="col-md-2 d-flex align-items-end">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="hide_closed" id="hideClosed" value="1" {% if selected_hide_closed %}checked{% endif %}>
+                            <label class="form-check-label" for="hideClosed">Не показувати закриті заявки</label>
+                        </div>
+                    </div>
                     {% if is_admin %}
                     <div class="col-md-2">
                         <label class="form-label">Компанія</label>
@@ -113,7 +120,7 @@
                                     {% else %}
                                         {% set next_order_id = 'desc' %}
                                     {% endif %}
-                                    <a href="{{ url_for('tickets', sort_by='id', sort_order=next_order_id, company_id=selected_company_id, status=selected_status, ticket_type=selected_ticket_type, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-reset">
+                                    <a href="{{ url_for('tickets', sort_by='id', sort_order=next_order_id, company_id=selected_company_id, status=selected_status, ticket_type=selected_ticket_type, hide_closed=1 if selected_hide_closed else 0, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-reset">
                                         №
                                         {% if sort_by == 'id' %}
                                             {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
@@ -126,7 +133,7 @@
                                     {% else %}
                                         {% set next_order_type = 'desc' %}
                                     {% endif %}
-                                    <a href="{{ url_for('tickets', sort_by='ticket_type', sort_order=next_order_type, company_id=selected_company_id, status=selected_status, ticket_type=selected_ticket_type, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-dark">
+                                    <a href="{{ url_for('tickets', sort_by='ticket_type', sort_order=next_order_type, company_id=selected_company_id, status=selected_status, ticket_type=selected_ticket_type, hide_closed=1 if selected_hide_closed else 0, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-dark">
                                         Тип
                                         {% if sort_by == 'ticket_type' %}
                                             {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
@@ -139,7 +146,7 @@
                                     {% else %}
                                         {% set next_order_status = 'desc' %}
                                     {% endif %}
-                                    <a href="{{ url_for('tickets', sort_by='status', sort_order=next_order_status, company_id=selected_company_id, status=selected_status, ticket_type=selected_ticket_type, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-dark">
+                                    <a href="{{ url_for('tickets', sort_by='status', sort_order=next_order_status, company_id=selected_company_id, status=selected_status, ticket_type=selected_ticket_type, hide_closed=1 if selected_hide_closed else 0, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-dark">
                                         Статус
                                         {% if sort_by == 'status' %}
                                             {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
@@ -152,7 +159,7 @@
                                     {% else %}
                                         {% set next_order_priority = 'desc' %}
                                     {% endif %}
-                                    <a href="{{ url_for('tickets', sort_by='priority', sort_order=next_order_priority, company_id=selected_company_id, status=selected_status, ticket_type=selected_ticket_type, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-dark">
+                                    <a href="{{ url_for('tickets', sort_by='priority', sort_order=next_order_priority, company_id=selected_company_id, status=selected_status, ticket_type=selected_ticket_type, hide_closed=1 if selected_hide_closed else 0, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-dark">
                                         Пріоритет
                                         {% if sort_by == 'priority' %}
                                             {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
@@ -170,7 +177,7 @@
                                     {% else %}
                                         {% set next_order_date = 'desc' %}
                                     {% endif %}
-                                    <a href="{{ url_for('tickets', sort_by='created_at', sort_order=next_order_date, company_id=selected_company_id, status=selected_status, ticket_type=selected_ticket_type, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-dark">
+                                    <a href="{{ url_for('tickets', sort_by='created_at', sort_order=next_order_date, company_id=selected_company_id, status=selected_status, ticket_type=selected_ticket_type, hide_closed=1 if selected_hide_closed else 0, period=selected_period, date_from=selected_date_from, date_to=selected_date_to) }}" class="text-decoration-none text-dark">
                                         Дата створення
                                         {% if sort_by == 'created_at' %}
                                             {% if sort_order == 'asc' %}<i class="bi bi-arrow-up"></i>{% else %}<i class="bi bi-arrow-down"></i>{% endif %}
@@ -262,7 +269,7 @@
                     <ul class="pagination justify-content-center mt-3">
                         {% if page > 1 %}
                         <li class="page-item">
-                            <a class="page-link" href="{{ url_for('tickets', page=page-1, company_id=selected_company_id, status=selected_status, ticket_type=selected_ticket_type, period=selected_period, date_from=selected_date_from, date_to=selected_date_to, sort_by=sort_by, sort_order=sort_order) }}">Попередня</a>
+                            <a class="page-link" href="{{ url_for('tickets', page=page-1, company_id=selected_company_id, status=selected_status, ticket_type=selected_ticket_type, hide_closed=1 if selected_hide_closed else 0, period=selected_period, date_from=selected_date_from, date_to=selected_date_to, sort_by=sort_by, sort_order=sort_order) }}">Попередня</a>
                         </li>
                         {% else %}
                         <li class="page-item disabled">
@@ -277,7 +284,7 @@
                             </li>
                             {% elif p <= 2 or p >= total_pages - 1 or (p >= page - 1 and p <= page + 1) %}
                             <li class="page-item">
-                                <a class="page-link" href="{{ url_for('tickets', page=p, company_id=selected_company_id, status=selected_status, ticket_type=selected_ticket_type, period=selected_period, date_from=selected_date_from, date_to=selected_date_to, sort_by=sort_by, sort_order=sort_order) }}">{{ p }}</a>
+                                <a class="page-link" href="{{ url_for('tickets', page=p, company_id=selected_company_id, status=selected_status, ticket_type=selected_ticket_type, hide_closed=1 if selected_hide_closed else 0, period=selected_period, date_from=selected_date_from, date_to=selected_date_to, sort_by=sort_by, sort_order=sort_order) }}">{{ p }}</a>
                             </li>
                             {% elif p == page - 2 or p == page + 2 %}
                             <li class="page-item disabled">
@@ -288,7 +295,7 @@
                         
                         {% if page < total_pages %}
                         <li class="page-item">
-                            <a class="page-link" href="{{ url_for('tickets', page=page+1, company_id=selected_company_id, status=selected_status, ticket_type=selected_ticket_type, period=selected_period, date_from=selected_date_from, date_to=selected_date_to, sort_by=sort_by, sort_order=sort_order) }}">Наступна</a>
+                            <a class="page-link" href="{{ url_for('tickets', page=page+1, company_id=selected_company_id, status=selected_status, ticket_type=selected_ticket_type, hide_closed=1 if selected_hide_closed else 0, period=selected_period, date_from=selected_date_from, date_to=selected_date_to, sort_by=sort_by, sort_order=sort_order) }}">Наступна</a>
                         </li>
                         {% else %}
                         <li class="page-item disabled">

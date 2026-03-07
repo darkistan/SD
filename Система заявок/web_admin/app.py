@@ -446,6 +446,14 @@ def tickets():
     company_id = request.args.get('company_id', type=int)
     status = request.args.get('status')
     ticket_type = request.args.get('ticket_type')
+    # Стан чекбокса: з URL або збережений у сесії (за замовчуванням — увімкнено).
+    # У формі є hidden=0 і checkbox=1; при відправці з увімкненим чекбоксом приходить обидва — беремо '1' якщо є.
+    hide_closed_arg_list = request.args.getlist('hide_closed')
+    if hide_closed_arg_list:
+        hide_closed = hide_closed_arg_list[-1] == '1'  # останнє значення (чекбокс перезаписує hidden)
+        flask_session['tickets_hide_closed'] = hide_closed
+    else:
+        hide_closed = flask_session.get('tickets_hide_closed', True)
     date_from_str = request.args.get('date_from', '').strip()
     date_to_str = request.args.get('date_to', '').strip()
     period = request.args.get('period', '').strip()
@@ -509,7 +517,8 @@ def tickets():
             date_to=date_to,
             sort_by=sort_by,
             sort_order=sort_order,
-            limit=None
+            limit=None,
+            exclude_closed=hide_closed
         )
     else:
         all_tickets = ticket_manager.get_user_tickets(
@@ -520,7 +529,8 @@ def tickets():
             date_to=date_to,
             sort_by=sort_by,
             sort_order=sort_order,
-            limit=None
+            limit=None,
+            exclude_closed=hide_closed
         )
     
     # Обчислюємо пагінацію
@@ -573,6 +583,7 @@ def tickets():
                          selected_company_id=company_id,
                          selected_status=status,
                          selected_ticket_type=ticket_type,
+                         selected_hide_closed=hide_closed,
                          selected_period=period,
                          selected_date_from=date_from_str,
                          selected_date_to=date_to_str,

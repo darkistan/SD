@@ -64,6 +64,23 @@ chat_active_for_user: Dict[int, int] = {}
 # Стан оформлення заявки на консультацію для гостей (без доступу до системи)
 guest_consultation_state: Dict[int, Dict[str, Any]] = {}
 
+# Повідомлення для гостей (немає доступу до системи)
+GUEST_WELCOME_MESSAGE = (
+    "🔐 <b>Доступ до системи заявок</b>\n\n"
+    "• <b>Запросити доступ</b> — надішліть запит адміністратору, щоб користуватися повним "
+    "функціоналом заявок на обслуговування.\n\n"
+    "• <b>Заявка на консультацію</b> — для <b>нових клієнтів</b>: залиште ім'я, телефон і зручний час для дзвінка; "
+    "ми зв'яжемося з вами щодо сервісу (заправка, ремонт тощо). Реєстрація в системі не потрібна.\n\n"
+    "Оберіть дію кнопками нижче."
+)
+
+GUEST_MENU_MESSAGE = (
+    "🔐 <b>Доступ до системи заявок</b>\n\n"
+    "• <b>Запросити доступ</b> — повний доступ після схвалення адміністратором.\n"
+    "• <b>Заявка на консультацію</b> — для нових клієнтів: контакти для зворотного дзвінка без реєстрації.\n\n"
+    "Оберіть дію кнопками нижче."
+)
+
 
 def get_status_ua(status: str) -> str:
     """Переклад статусу заявки на українську мову з БД"""
@@ -180,12 +197,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text(message_text, reply_markup=keyboard, parse_mode='HTML')
     else:
         keyboard = create_menu_keyboard(user_id)
-        message_text = (
-            "🔐 <b>Доступ до системи заявок</b>\n\n"
-            "Для отримання доступу натисніть кнопку 'Запросити доступ'.\n"
-            "Ваш запит буде відправлено адміністратору."
-        )
-        await update.message.reply_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+        await update.message.reply_text(GUEST_WELCOME_MESSAGE, reply_markup=keyboard, parse_mode='HTML')
 
 
 async def menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -212,7 +224,7 @@ async def menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         
         message_text += "Оберіть дію:"
     else:
-        message_text = "🔐 <b>Доступ до системи</b>\n\nЗапросите доступ для використання системи."
+        message_text = GUEST_MENU_MESSAGE
     
     await update.message.reply_text(message_text, reply_markup=keyboard, parse_mode='HTML')
 
@@ -1109,7 +1121,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 "ℹ️ <b>Довідка</b>\n\n"
                 "<b>Доступні дії без реєстрації в системі:</b>\n"
                 "• <b>Запросити доступ</b> — надіслати запит адміністратору\n"
-                "• <b>Заявка на консультацію</b> — залишити контакти для зворотного дзвінка\n\n"
+                "• <b>Заявка на консультацію</b> — для нових клієнтів: ім'я, телефон і зручний час; зворотний дзвінок щодо сервісу\n\n"
                 "<b>Команди:</b> /start, /menu\n\n"
                 "Після схвалення доступу з’явиться повне меню заявок на обслуговування."
             )
@@ -1130,7 +1142,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                         message_text += f"{company.user_info}\n\n"
             message_text += "Оберіть дію:"
         else:
-            message_text = "🔐 <b>Доступ до системи</b>\n\nЗапросите доступ для використання системи."
+            message_text = GUEST_MENU_MESSAGE
         try:
             await query.edit_message_text(message_text, reply_markup=keyboard, parse_mode='HTML')
         except Exception as e:
@@ -1152,7 +1164,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         ]])
         await safe_edit_message_text(
             query,
-            "📞 <b>Заявка на консультацію</b>\n\n"
+            "📞 <b>Заявка на консультацію</b> <i>(для нових клієнтів)</i>\n\n"
             "Крок 1 з 3. Введіть <b>контактне ім'я</b> (ПІБ або як до вас звертатись).\n\n"
             "Надішліть відповідь звичайним повідомленням у чат.",
             reply_markup=cancel_kb,
@@ -1166,7 +1178,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         if auth_manager.is_user_allowed(user_id):
             message_text = "📋 <b>Головне меню</b>\n\nОберіть дію:"
         else:
-            message_text = "🔐 <b>Доступ до системи</b>\n\nЗапросите доступ для використання системи."
+            message_text = GUEST_MENU_MESSAGE
         await safe_edit_message_text(query, message_text, reply_markup=keyboard)
         return
     

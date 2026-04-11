@@ -3,6 +3,7 @@
 """
 import html
 import os
+import re
 import requests
 from typing import Optional
 from dotenv import load_dotenv
@@ -222,6 +223,13 @@ class NotificationManager:
         fn = html.escape(telegram_first_name or "") or "—"
         ln = html.escape(telegram_last_name or "") or "—"
 
+        # Посилання на чат у Telegram (лише для валідного public username)
+        tme_link_line = ""
+        if telegram_username:
+            u = telegram_username.strip().lstrip("@")
+            if re.fullmatch(r"[a-zA-Z0-9_]{5,32}", u):
+                tme_link_line = f'• <a href="https://t.me/{u}">Написати в Telegram</a>\n'
+
         message = (
             "📞 <b>Нова заявка на консультацію</b>\n\n"
             f"<b>№ заявки:</b> #{request_id}\n"
@@ -229,6 +237,7 @@ class NotificationManager:
             f"<b>Телефон:</b> {html.escape(phone)}\n"
             f"<b>Зручний час для дзвінка:</b> {html.escape(preferred_call_time)}\n\n"
             "<b>Telegram:</b>\n"
+            f"{tme_link_line}"
             f"• ID: <code>{telegram_user_id}</code>\n"
             f"• Username: {uname}\n"
             f"• Ім'я: {fn}\n"

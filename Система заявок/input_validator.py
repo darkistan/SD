@@ -1,6 +1,7 @@
 """
 Модуль для валідації вхідних даних
 """
+import re
 from typing import Dict, Any
 
 from logger import logger
@@ -224,6 +225,47 @@ class InputValidator:
         
         return text
     
+    def validate_guest_contact_name(self, name: str) -> Dict[str, Any]:
+        """
+        Валідація контактного імені для заявки гостя (консультація).
+        """
+        if not name or not name.strip():
+            return {"valid": False, "message": "Вкажіть ім'я або як до вас звертатись."}
+        cleaned = name.strip()
+        if len(cleaned) < 2:
+            return {"valid": False, "message": "Занадто коротке ім'я."}
+        if len(cleaned) > 200:
+            return {"valid": False, "message": "Ім'я не довше 200 символів."}
+        return {"valid": True, "message": "OK", "cleaned": cleaned}
+
+    def validate_guest_phone(self, phone: str) -> Dict[str, Any]:
+        """
+        Валідація телефону для заявки гостя: дозволені цифри та + ( ) - пробіли.
+        """
+        if not phone or not phone.strip():
+            return {"valid": False, "message": "Вкажіть номер телефону."}
+        raw = phone.strip()
+        if len(raw) > 50:
+            return {"valid": False, "message": "Номер занадто довгий."}
+        if not re.match(r"^[\d\s+\-()]+$", raw):
+            return {
+                "valid": False,
+                "message": "Дозволені лише цифри, +, пробіли, дужки та дефіс.",
+            }
+        digits = re.sub(r"\D", "", raw)
+        if len(digits) < 10:
+            return {"valid": False, "message": "Занадто мало цифр у номері (мінімум 10)."}
+        return {"valid": True, "message": "OK", "cleaned": raw}
+
+    def validate_guest_call_time(self, text: str) -> Dict[str, Any]:
+        """Валідація поля «зручний час» (вільний текст)."""
+        if not text or not text.strip():
+            return {"valid": False, "message": "Вкажіть зручний час для дзвінка."}
+        cleaned = text.strip()
+        if len(cleaned) > 500:
+            return {"valid": False, "message": "Текст не довше 500 символів."}
+        return {"valid": True, "message": "OK", "cleaned": cleaned}
+
     def validate_role(self, role: str) -> bool:
         """
         Валідація ролі користувача

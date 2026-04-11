@@ -1,6 +1,7 @@
 """
 Модуль для відправки уведомлень через Telegram
 """
+import html
 import os
 import requests
 from typing import Optional
@@ -198,7 +199,65 @@ class NotificationManager:
         except Exception as e:
             logger.log_error(f"Помилка відправки оповіщення про нову заявку: {e}")
             return False
-    
+
+    def send_service_consultation_notification(
+        self,
+        user_id: int,
+        request_id: int,
+        contact_name: str,
+        phone: str,
+        preferred_call_time: str,
+        telegram_user_id: int,
+        telegram_username: Optional[str],
+        telegram_first_name: Optional[str],
+        telegram_last_name: Optional[str],
+    ) -> bool:
+        """
+        Оповіщення про нову заявку на консультацію від гостя (користувачі з «Нові клієнти»).
+        """
+        if not TELEGRAM_BOT_TOKEN:
+            return False
+
+        uname = f"@{html.escape(telegram_username)}" if telegram_username else "немає username"
+        fn = html.escape(telegram_first_name or "") or "—"
+        ln = html.escape(telegram_last_name or "") or "—"
+
+        message = (
+            "📞 <b>Нова заявка на консультацію</b>\n\n"
+            f"<b>№ заявки:</b> #{request_id}\n"
+            f"<b>Контактне ім'я:</b> {html.escape(contact_name)}\n"
+            f"<b>Телефон:</b> {html.escape(phone)}\n"
+            f"<b>Зручний час для дзвінка:</b> {html.escape(preferred_call_time)}\n\n"
+            "<b>Telegram:</b>\n"
+            f"• ID: <code>{telegram_user_id}</code>\n"
+            f"• Username: {uname}\n"
+            f"• Ім'я: {fn}\n"
+            f"• Прізвище: {ln}\n"
+        )
+
+        try:
+            response = requests.post(
+                f"{TELEGRAM_API_URL}/sendMessage",
+                json={
+                    "chat_id": user_id,
+                    "text": message,
+                    "parse_mode": "HTML",
+                },
+                timeout=10,
+            )
+            if response.status_code == 200:
+                logger.log_info(
+                    f"Оповіщення про заявку на консультацію #{request_id} відправлено користувачу {user_id}"
+                )
+                return True
+            logger.log_warning(
+                f"Помилка відправки оповіщення про консультацію користувачу {user_id}: {response.text}"
+            )
+            return False
+        except Exception as e:
+            logger.log_error(f"Помилка відправки оповіщення про консультацію: {e}")
+            return False
+
     def send_access_approval_notification(
         self,
         user_id: int,

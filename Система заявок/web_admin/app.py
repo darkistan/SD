@@ -1443,6 +1443,25 @@ def toggle_user_notifications(user_id):
     return redirect(url_for('users'))
 
 
+@app.route('/users/<int:user_id>/toggle_new_clients_notifications', methods=['POST'])
+@admin_required
+def toggle_user_new_clients_notifications(user_id):
+    """Перемикання оповіщень «Нові клієнти» (заявки на консультацію від гостей бота)."""
+    with get_session() as session:
+        user = session.query(User).filter(User.user_id == user_id).first()
+        if user:
+            if user.user_id > 0:
+                user.new_clients_notifications_enabled = not user.new_clients_notifications_enabled
+                session.commit()
+                status = "увімкнено" if user.new_clients_notifications_enabled else "вимкнено"
+                flash(f'Оповіщення «Нові клієнти» для користувача {status}.', 'success')
+            else:
+                flash('Веб-користувачі не отримують такі оповіщення в Telegram.', 'warning')
+        else:
+            flash('Користувача не знайдено.', 'danger')
+    return redirect(url_for('users'))
+
+
 @app.route('/users/toggle_vip/<int:user_id>', methods=['POST'])
 @admin_required
 def toggle_user_vip(user_id):

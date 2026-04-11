@@ -33,6 +33,7 @@ from poll_manager import get_poll_manager
 from chat_manager import get_chat_manager
 from task_manager import get_task_manager
 from knowledge_base_manager import get_knowledge_base_manager
+from consultation_manager import notify_staff_about_consultation, save_consultation_request
 from datetime import datetime, time as dt_time, timedelta
 
 # Завантажуємо змінні середовища
@@ -59,6 +60,9 @@ NOTES_PER_PAGE = 10  # Кількість нотаток на сторінку
 # Глобальна змінна для зберігання активного чату для користувача
 # Формат: {user_id: ticket_id}
 chat_active_for_user: Dict[int, int] = {}
+
+# Стан оформлення заявки на консультацію для гостей (без доступу до системи)
+guest_consultation_state: Dict[int, Dict[str, Any]] = {}
 
 
 def get_status_ua(status: str) -> str:
@@ -148,6 +152,7 @@ def create_menu_keyboard(user_id: int) -> InlineKeyboardMarkup:
     else:
         # Неавторизований користувач
         buttons.append([InlineKeyboardButton("🔐 Запросити доступ", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "request_access"))])
+        buttons.append([InlineKeyboardButton("📞 Заявка на консультацію", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "service_consultation"))])
     
     buttons.append([InlineKeyboardButton("ℹ️ Довідка", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "help"))])
     
@@ -158,6 +163,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обробка команди /start"""
     user = update.effective_user
     user_id = user.id
+    if user_id in guest_consultation_state:
+        del guest_consultation_state[user_id]
     
     if auth_manager.is_user_allowed(user_id):
         keyboard = create_menu_keyboard(user_id)
@@ -189,6 +196,8 @@ async def menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     # Виходимо з режиму чату, якщо користувач був в ньому
     if user_id in chat_active_for_user:
         del chat_active_for_user[user_id]
+    if user_id in guest_consultation_state:
+        del guest_consultation_state[user_id]
     
     if auth_manager.is_user_allowed(user_id):
         message_text = "📋 <b>Головне меню</b>\n\n"
@@ -1078,6 +1087,88 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         else:
             await safe_edit_message_text(query, "ℹ️ Ваш запит вже надіслано. Очікуйте схвалення.")
         return
+
+    # Довідка — доступна і гостям, і авторизованим користувачам
+    if callback_data == "help":
+        if auth_manager.is_user_allowed(user_id):
+            help_text = (
+                "ℹ️ <b>Довідка</b>\n\n"
+                "<b>Основні команди:</b>\n"
+                "• /start - початок роботи\n"
+                "• /menu - головне меню\n"
+                "• /new_ticket - створити заявку\n"
+                "• /my_tickets - мої заявки\n\n"
+                "<b>Типи заявок:</b>\n"
+                "• Заправка картриджів - заправка картриджів для принтерів\n"
+                "• Ремонт принтера - ремонт принтерів\n"
+                "• Інцидент - інші технічні проблеми\n\n"
+                "Всі зміни статусів заявок надсилаються автоматично."
+            )
+        else:
+            help_text = (
+                "ℹ️ <b>Довідка</b>\n\n"
+                "<b>Доступні дії без реєстрації в системі:</b>\n"
+                "• <b>Запросити доступ</b> — надіслати запит адміністратору\n"
+                "• <b>Заявка на консультацію</b> — залишити контакти для зворотного дзвінка\n\n"
+                "<b>Команди:</b> /start, /menu\n\n"
+                "Після схвалення доступу з’явиться повне меню заявок на обслуговування."
+            )
+        await query.edit_message_text(help_text, parse_mode='HTML')
+        return
+
+    # Головне меню — гості та авторизовані
+    if callback_data == "menu":
+        user_id_menu = query.from_user.id
+        keyboard = create_menu_keyboard(user_id_menu)
+        if auth_manager.is_user_allowed(user_id_menu):
+            message_text = "📋 <b>Головне меню</b>\n\n"
+            with get_session() as session:
+                user_m = session.query(User).filter(User.user_id == user_id_menu).first()
+                if user_m and user_m.company_id:
+                    company = session.query(Company).filter(Company.id == user_m.company_id).first()
+                    if company and company.user_info:
+                        message_text += f"{company.user_info}\n\n"
+            message_text += "Оберіть дію:"
+        else:
+            message_text = "🔐 <b>Доступ до системи</b>\n\nЗапросите доступ для використання системи."
+        try:
+            await query.edit_message_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+        except Exception as e:
+            logger.log_error(f"Помилка редагування повідомлення меню: {e}")
+            try:
+                await query.message.reply_text(message_text, reply_markup=keyboard, parse_mode='HTML')
+            except Exception as reply_error:
+                logger.log_error(f"Помилка відправки повідомлення меню: {reply_error}")
+        return
+
+    # Заявка на консультацію (лише для гостей)
+    if callback_data == "service_consultation":
+        if auth_manager.is_user_allowed(user_id):
+            await query.answer("Ця функція призначена для гостей без доступу до системи.", show_alert=True)
+            return
+        guest_consultation_state[user_id] = {'step': 'name'}
+        cancel_kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton("❌ Скасувати", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cancel_service_consultation"))
+        ]])
+        await safe_edit_message_text(
+            query,
+            "📞 <b>Заявка на консультацію</b>\n\n"
+            "Крок 1 з 3. Введіть <b>контактне ім'я</b> (ПІБ або як до вас звертатись).\n\n"
+            "Надішліть відповідь звичайним повідомленням у чат.",
+            reply_markup=cancel_kb,
+        )
+        return
+
+    if callback_data == "cancel_service_consultation":
+        if user_id in guest_consultation_state:
+            del guest_consultation_state[user_id]
+        keyboard = create_menu_keyboard(user_id)
+        if auth_manager.is_user_allowed(user_id):
+            message_text = "📋 <b>Головне меню</b>\n\nОберіть дію:"
+        else:
+            message_text = "🔐 <b>Доступ до системи</b>\n\nЗапросите доступ для використання системи."
+        await safe_edit_message_text(query, message_text, reply_markup=keyboard)
+        return
     
     # Для всіх інших callback потрібен доступ
     if not auth_manager.is_user_allowed(user_id):
@@ -1092,49 +1183,6 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     elif callback_data == "my_tickets":
         await my_tickets_command(update, context, page=0)
         # Не видаляємо повідомлення, бо my_tickets_command вже редагує його через edit_message_text
-    elif callback_data == "menu":
-        # Повернення до головного меню
-        user_id = query.from_user.id
-        keyboard = create_menu_keyboard(user_id)
-        
-        if auth_manager.is_user_allowed(user_id):
-            message_text = "📋 <b>Головне меню</b>\n\n"
-            
-            # Отримуємо інформацію компанії користувача
-            with get_session() as session:
-                user = session.query(User).filter(User.user_id == user_id).first()
-                if user and user.company_id:
-                    company = session.query(Company).filter(Company.id == user.company_id).first()
-                    if company and company.user_info:
-                        message_text += f"{company.user_info}\n\n"
-            
-            message_text += "Оберіть дію:"
-        else:
-            message_text = "🔐 <b>Доступ до системи</b>\n\nЗапросите доступ для використання системи."
-        
-        try:
-            await query.edit_message_text(message_text, reply_markup=keyboard, parse_mode='HTML')
-        except Exception as e:
-            logger.log_error(f"Помилка редагування повідомлення меню: {e}")
-            try:
-                await query.message.reply_text(message_text, reply_markup=keyboard, parse_mode='HTML')
-            except Exception as reply_error:
-                logger.log_error(f"Помилка відправки повідомлення меню: {reply_error}")
-    elif callback_data == "help":
-        help_text = (
-            "ℹ️ <b>Довідка</b>\n\n"
-            "<b>Основні команди:</b>\n"
-            "• /start - початок роботи\n"
-            "• /menu - головне меню\n"
-            "• /new_ticket - створити заявку\n"
-            "• /my_tickets - мої заявки\n\n"
-            "<b>Типи заявок:</b>\n"
-            "• Заправка картриджів - заправка картриджів для принтерів\n"
-            "• Ремонт принтера - ремонт принтерів\n"
-            "• Інцидент - інші технічні проблеми\n\n"
-            "Всі зміни статусів заявок надсилаються автоматично."
-        )
-        await query.edit_message_text(help_text, parse_mode='HTML')
     elif callback_data.startswith("ticket_type:"):
         ticket_type = callback_data.split(":")[1]
         await handle_ticket_type_selection(update, context, user_id, ticket_type)
@@ -2298,6 +2346,90 @@ def main():
                 del chat_active_for_user[user_id]
                 await update.message.reply_text("❌ Чат закрито. Ви не можете відправляти повідомлення.")
             return
+
+        # Заявка на консультацію (гість без доступу)
+        if user_id in guest_consultation_state and not auth_manager.is_user_allowed(user_id):
+            state = guest_consultation_state[user_id]
+            step = state.get('step')
+            cancel_kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton("❌ Скасувати", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cancel_service_consultation"))
+            ]])
+            eu = update.effective_user
+
+            if step == 'name':
+                vr = input_validator.validate_guest_contact_name(text)
+                if not vr['valid']:
+                    await update.message.reply_text(vr['message'])
+                    return
+                state['contact_name'] = vr['cleaned']
+                state['step'] = 'phone'
+                await update.message.reply_text(
+                    "📞 <b>Крок 2 з 3.</b> Введіть <b>номер телефону</b> для зв'язку.\n\n"
+                    "Приклад: <code>+380501234567</code>",
+                    reply_markup=cancel_kb,
+                    parse_mode='HTML',
+                )
+                return
+
+            if step == 'phone':
+                vr = input_validator.validate_guest_phone(text)
+                if not vr['valid']:
+                    await update.message.reply_text(vr['message'])
+                    return
+                state['phone'] = vr['cleaned']
+                state['step'] = 'time'
+                await update.message.reply_text(
+                    "🕐 <b>Крок 3 з 3.</b> Коли вам зручно отримати дзвінок?\n\n"
+                    "Наприклад: будні 10:00–13:00, або після 15:00.",
+                    reply_markup=cancel_kb,
+                    parse_mode='HTML',
+                )
+                return
+
+            if step == 'time':
+                vr = input_validator.validate_guest_call_time(text)
+                if not vr['valid']:
+                    await update.message.reply_text(vr['message'])
+                    return
+                preferred = vr['cleaned']
+                contact_name = state['contact_name']
+                phone = state['phone']
+                del guest_consultation_state[user_id]
+
+                req_id = save_consultation_request(
+                    telegram_user_id=user_id,
+                    telegram_username=eu.username if eu else None,
+                    telegram_first_name=eu.first_name if eu else None,
+                    telegram_last_name=eu.last_name if eu else None,
+                    contact_name=contact_name,
+                    phone=phone,
+                    preferred_call_time=preferred,
+                )
+                if req_id:
+                    ok, fail = notify_staff_about_consultation(
+                        request_id=req_id,
+                        contact_name=contact_name,
+                        phone=phone,
+                        preferred_call_time=preferred,
+                        telegram_user_id=user_id,
+                        telegram_username=eu.username if eu else None,
+                        telegram_first_name=eu.first_name if eu else None,
+                        telegram_last_name=eu.last_name if eu else None,
+                    )
+                    await update.message.reply_text(
+                        "✅ <b>Заявку на консультацію надіслано.</b>\n\n"
+                        "Ми зв'яжемося з вами згодом.",
+                        reply_markup=create_menu_keyboard(user_id),
+                        parse_mode='HTML',
+                    )
+                    if ok == 0 and fail == 0:
+                        logger.log_info(f"Заявку на консультацію #{req_id} збережено; отримувачів з «Нові клієнти» немає.")
+                else:
+                    await update.message.reply_text(
+                        "❌ Не вдалося зберегти заявку. Спробуйте пізніше або зверніться до адміністратора.",
+                        reply_markup=create_menu_keyboard(user_id),
+                    )
+                return
         
         # Обробка створення нотатки
         if user_id in note_creation_state:

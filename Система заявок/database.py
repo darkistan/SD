@@ -12,7 +12,7 @@ from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.exc import OperationalError, DatabaseError
 from dotenv import load_dotenv
 
-from models import Base, BotConfig
+from models import Base, BotConfig, ServiceConsultationRequest  # ServiceConsultationRequest — реєстрація таблиці в metadata
 from logger import logger
 
 # Завантажуємо змінні середовища
@@ -106,6 +106,7 @@ class DatabaseManager:
             self.migrate_create_tasks_table()
             self.migrate_create_timers_table()
             self.migrate_add_morning_notification_time_to_user()
+            self.migrate_add_new_clients_notifications_to_user()
 
             # Заповнюємо справочник статусів (якщо таблиця порожня)
             self.migrate_create_ticket_statuses()
@@ -430,7 +431,26 @@ class DatabaseManager:
                     logger.log_info("Додано колонку morning_notification_time до users")
         except Exception as e:
             logger.log_error(f"Помилка міграції додавання morning_notification_time: {e}")
-    
+
+    def migrate_add_new_clients_notifications_to_user(self):
+        """Міграція: додавання колонки new_clients_notifications_enabled до таблиці users"""
+        try:
+            with self.engine.begin() as conn:
+                inspector = inspect(self.engine)
+                if 'users' not in inspector.get_table_names():
+                    return
+                columns = [col['name'] for col in inspector.get_columns('users')]
+                if 'new_clients_notifications_enabled' not in columns:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE users ADD COLUMN new_clients_notifications_enabled "
+                            "BOOLEAN NOT NULL DEFAULT 0"
+                        )
+                    )
+                    logger.log_info("Додано колонку new_clients_notifications_enabled до users")
+        except Exception as e:
+            logger.log_error(f"Помилка міграції new_clients_notifications_enabled: {e}")
+
     def migrate_add_commands_to_knowledge_base_notes(self):
         """Міграція: додавання колонки commands до таблиці knowledge_base_notes"""
         try:

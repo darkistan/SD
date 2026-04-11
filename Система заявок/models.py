@@ -37,6 +37,24 @@ class PendingRequest(Base):
         return f"<PendingRequest(user_id={self.user_id}, username='{self.username}')>"
 
 
+class ServiceConsultationRequest(Base):
+    """Заявка на консультацію від гостя (без доступу до системи)"""
+    __tablename__ = 'service_consultation_requests'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    telegram_user_id = Column(Integer, nullable=False, index=True)
+    telegram_username = Column(String(100), nullable=True)
+    telegram_first_name = Column(String(200), nullable=True)
+    telegram_last_name = Column(String(200), nullable=True)
+    contact_name = Column(String(200), nullable=False)
+    phone = Column(String(50), nullable=False)
+    preferred_call_time = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+
+    def __repr__(self):
+        return f"<ServiceConsultationRequest(id={self.id}, telegram_user_id={self.telegram_user_id})>"
+
+
 class User(Base):
     """Модель користувача з доступом до системи"""
     __tablename__ = 'users'
@@ -46,6 +64,7 @@ class User(Base):
     username = Column(String(100))
     approved_at = Column(DateTime, default=datetime.now)
     notifications_enabled = Column(Boolean, default=False)
+    new_clients_notifications_enabled = Column(Boolean, default=False, nullable=False)  # Оповіщення про заявки гостей (консультація)
     role = Column(String(20), default='user')  # admin, user
     is_vip = Column(Boolean, default=False, index=True)  # VIP користувач
     full_name = Column(String(200))

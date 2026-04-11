@@ -265,64 +265,97 @@
                                     <span class="text-muted">Не встановлено</span>
                                     {% endif %}
                                 </td>
-                                <td>
-                                    <div class="btn-group" role="group">
-                                        <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#fullNameModal{{ user.user_id }}">
-                                            <i class="bi bi-person"></i> ПІБ
+                                <td class="text-nowrap">
+                                    <div class="dropdown">
+                                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Дії">
+                                            <i class="bi bi-three-dots-vertical"></i>
                                         </button>
-                                        <button class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#passwordModal{{ user.user_id }}">
-                                            <i class="bi bi-key"></i> Пароль
-                                        </button>
-                                        <button class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#companyModal{{ user.user_id }}">
-                                            <i class="bi bi-building"></i> Компанія
-                                        </button>
-                                        {% if user.company_id %}
-                                        {% for company in companies %}
-                                        {% if company.id == user.company_id and company.printer_service_enabled %}
-                                        <button class="btn btn-sm btn-secondary" data-bs-toggle="modal" data-bs-target="#printersModal{{ user.user_id }}">
-                                            <i class="bi bi-printer"></i> Принтери
-                                        </button>
-                                        {% endif %}
-                                        {% endfor %}
-                                        {% endif %}
-                                        {% if user.user_id > 0 %}
-                                        <form method="POST" action="{{ url_for('toggle_user_notifications', user_id=user.user_id) }}" style="display:inline;">
-                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                            <button type="submit" class="btn btn-sm {% if user.notifications_enabled %}btn-success{% else %}btn-secondary{% endif %}" title="{% if user.notifications_enabled %}Оповіщення увімкнено{% else %}Оповіщення вимкнено{% endif %}">
-                                                <i class="bi {% if user.notifications_enabled %}bi-bell-fill{% else %}bi-bell-slash{% endif %}"></i> Оповіщення
-                                            </button>
-                                        </form>
-                                        {% if user.notifications_enabled %}
-                                        <form method="POST" action="{{ url_for('set_morning_notification_time', user_id=user.user_id) }}" style="display:inline;" class="d-inline-block ms-1 align-middle">
-                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                            <input type="time" name="time" class="form-control form-control-sm d-inline-block" style="width:6em;" value="{{ user.morning_notification_time or '' }}" title="Час ранкового оповіщення (HH:MM)">
-                                            <button type="submit" class="btn btn-sm btn-outline-secondary ms-1" title="Зберегти час">OK</button>
-                                        </form>
-                                        {% endif %}
-                                        {% else %}
-                                        <button type="button" class="btn btn-sm btn-secondary" disabled title="Веб-користувачі не отримують оповіщення в Telegram">
-                                            <i class="bi bi-bell-slash"></i> Оповіщення
-                                        </button>
-                                        {% endif %}
-                                        <form method="POST" action="{{ url_for('toggle_user_vip', user_id=user.user_id) }}" style="display:inline;">
-                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                            <button type="submit" class="btn btn-sm {% if user.is_vip %}btn-warning{% else %}btn-outline-warning{% endif %}" title="{% if user.is_vip %}VIP статус увімкнено - заявки з високим пріоритетом{% else %}Надати VIP статус{% endif %}">
-                                                <i class="bi bi-star{% if user.is_vip %}-fill{% endif %}"></i> VIP
-                                            </button>
-                                        </form>
-                                        {% if user.user_id != 1 %}
-                                        <form method="POST" action="{{ url_for('delete_user') }}" style="display:inline;" onsubmit="return confirm('Ви впевнені, що хочете видалити користувача {{ user.full_name or user.username or user.user_id }}?');">
-                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                            <input type="hidden" name="user_id" value="{{ user.user_id }}"/>
-                                            <button type="submit" class="btn btn-sm btn-danger">
-                                                <i class="bi bi-trash"></i> Видалити
-                                            </button>
-                                        </form>
-                                        {% else %}
-                                        <button type="button" class="btn btn-sm btn-danger" disabled title="Неможливо видалити системного адміністратора">
-                                            <i class="bi bi-trash"></i> Видалити
-                                        </button>
-                                        {% endif %}
+                                        <ul class="dropdown-menu dropdown-menu-end shadow py-2" style="min-width: 15rem;">
+                                            <li><h6 class="dropdown-header text-muted small mb-0">Профіль</h6></li>
+                                            <li>
+                                                <button type="button" class="dropdown-item py-1 px-3" data-bs-toggle="modal" data-bs-target="#fullNameModal{{ user.user_id }}">
+                                                    <i class="bi bi-person me-2 text-secondary"></i>ПІБ
+                                                </button>
+                                            </li>
+                                            <li>
+                                                <button type="button" class="dropdown-item py-1 px-3" data-bs-toggle="modal" data-bs-target="#passwordModal{{ user.user_id }}">
+                                                    <i class="bi bi-key me-2 text-secondary"></i>Пароль
+                                                </button>
+                                            </li>
+                                            <li>
+                                                <button type="button" class="dropdown-item py-1 px-3" data-bs-toggle="modal" data-bs-target="#companyModal{{ user.user_id }}">
+                                                    <i class="bi bi-building me-2 text-secondary"></i>Компанія
+                                                </button>
+                                            </li>
+                                            {% if user.company_id %}
+                                            {% for company in companies %}
+                                            {% if company.id == user.company_id and company.printer_service_enabled %}
+                                            <li>
+                                                <button type="button" class="dropdown-item py-1 px-3" data-bs-toggle="modal" data-bs-target="#printersModal{{ user.user_id }}">
+                                                    <i class="bi bi-printer me-2 text-secondary"></i>Принтери
+                                                </button>
+                                            </li>
+                                            {% endif %}
+                                            {% endfor %}
+                                            {% endif %}
+                                            <li><hr class="dropdown-divider my-2"></li>
+                                            {% if user.user_id > 0 %}
+                                            <li><h6 class="dropdown-header text-muted small mb-0">Telegram</h6></li>
+                                            <li>
+                                                <form method="POST" action="{{ url_for('toggle_user_notifications', user_id=user.user_id) }}" class="m-0">
+                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                                    <button type="submit" class="dropdown-item py-1 px-3 d-flex align-items-center justify-content-between">
+                                                        <span><i class="bi {% if user.notifications_enabled %}bi-bell-fill{% else %}bi-bell{% endif %} me-2 text-secondary"></i>Оповіщення</span>
+                                                        <span class="badge {% if user.notifications_enabled %}bg-success{% else %}bg-secondary{% endif %} rounded-pill">{{ 'увімк.' if user.notifications_enabled else 'вимк.' }}</span>
+                                                    </button>
+                                                </form>
+                                            </li>
+                                            <li>
+                                                <form method="POST" action="{{ url_for('toggle_user_new_clients_notifications', user_id=user.user_id) }}" class="m-0">
+                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                                    <button type="submit" class="dropdown-item py-1 px-3 d-flex align-items-center justify-content-between">
+                                                        <span><i class="bi bi-person-plus me-2 text-secondary"></i>Нові клієнти</span>
+                                                        <span class="badge {% if user.new_clients_notifications_enabled %}bg-info text-dark{% else %}bg-secondary{% endif %} rounded-pill">{{ 'увімк.' if user.new_clients_notifications_enabled else 'вимк.' }}</span>
+                                                    </button>
+                                                </form>
+                                            </li>
+                                            {% if user.notifications_enabled %}
+                                            <li class="px-3 py-2" onclick="event.stopPropagation();">
+                                                <form method="POST" action="{{ url_for('set_morning_notification_time', user_id=user.user_id) }}" class="d-flex flex-wrap gap-1 align-items-center">
+                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                                    <label class="small text-muted mb-0 me-1">Ранок</label>
+                                                    <input type="time" name="time" class="form-control form-control-sm" style="width:6.5rem;" value="{{ user.morning_notification_time or '' }}" title="Час ранкового оповіщення">
+                                                    <button type="submit" class="btn btn-sm btn-outline-secondary px-2" title="Зберегти час">OK</button>
+                                                </form>
+                                            </li>
+                                            {% endif %}
+                                            {% else %}
+                                            <li><span class="dropdown-item-text small text-muted py-1"><i class="bi bi-bell-slash me-1"></i>Без Telegram</span></li>
+                                            {% endif %}
+                                            <li><hr class="dropdown-divider my-2"></li>
+                                            <li>
+                                                <form method="POST" action="{{ url_for('toggle_user_vip', user_id=user.user_id) }}" class="m-0">
+                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                                    <button type="submit" class="dropdown-item py-1 px-3 d-flex align-items-center justify-content-between">
+                                                        <span><i class="bi bi-star{% if user.is_vip %}-fill{% endif %} me-2 text-warning"></i>VIP</span>
+                                                        <span class="badge {% if user.is_vip %}bg-warning text-dark{% else %}bg-secondary{% endif %} rounded-pill">{{ 'так' if user.is_vip else 'ні' }}</span>
+                                                    </button>
+                                                </form>
+                                            </li>
+                                            {% if user.user_id != 1 %}
+                                            <li>
+                                                <form method="POST" action="{{ url_for('delete_user') }}" class="m-0" onsubmit="return confirm('Ви впевнені, що хочете видалити користувача {{ user.full_name or user.username or user.user_id }}?');">
+                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                                    <input type="hidden" name="user_id" value="{{ user.user_id }}"/>
+                                                    <button type="submit" class="dropdown-item py-1 px-3 text-danger">
+                                                        <i class="bi bi-trash me-2"></i>Видалити
+                                                    </button>
+                                                </form>
+                                            </li>
+                                            {% else %}
+                                            <li><span class="dropdown-item-text small text-muted py-1 disabled"><i class="bi bi-trash me-1"></i>Видалення недоступне</span></li>
+                                            {% endif %}
+                                        </ul>
                                     </div>
                                 </td>
                             </tr>

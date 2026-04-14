@@ -9,6 +9,7 @@ from models import Ticket, TicketItem, User, Company, Log, Printer, CartridgeTyp
 from logger import logger
 from input_validator import input_validator
 from notification_manager import get_notification_manager
+from contact_utils import telegram_username_to_link
 
 
 class TicketManager:
@@ -593,6 +594,9 @@ class TicketManager:
             'company_name': company.name if company else None,
             'user_id': ticket.user_id,
             'user_name': user.full_name or user.username if user else None,
+            'user_phone': user.phone if user else None,
+            'telegram_username': user.username if user else None,
+            'telegram_link': telegram_username_to_link(user.username) if user else None,
             'user_is_vip': user.is_vip if user else False,
             'admin_creator_id': ticket.admin_creator_id,
             'executor_id': ticket.executor_id,

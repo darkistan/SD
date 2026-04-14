@@ -89,6 +89,20 @@
                         </td>
                     </tr>
                     <tr>
+                        <th>Телефон:</th>
+                        <td>
+                            {% if ticket.user_phone %}
+                                <strong>{{ ticket.user_phone }}</strong>
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                            {% if ticket.telegram_link %}
+                                <span class="mx-2 text-muted">|</span>
+                                <a href="{{ ticket.telegram_link }}" target="_blank" rel="noopener noreferrer">Чат в Telegram</a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
                         <th>Дата створення:</th>
                         <td>{{ ticket.created_at[:19] if ticket.created_at else 'Невідомо' }}</td>
                     </tr>

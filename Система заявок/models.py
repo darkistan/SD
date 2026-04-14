@@ -68,6 +68,7 @@ class User(Base):
     role = Column(String(20), default='user')  # admin, user
     is_vip = Column(Boolean, default=False, index=True)  # VIP користувач
     full_name = Column(String(200))
+    phone = Column(String(50), nullable=True, index=True)
     password_hash = Column(String(255), nullable=True)
     company_id = Column(Integer, ForeignKey('companies.id'), nullable=True, index=True)
     morning_notification_time = Column(String(5), nullable=True)  # Час ранкового оповіщення "HH:MM", NULL = 09:00

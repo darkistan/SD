@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from database import init_database, get_session, get_bot_config, set_bot_config
 from models import User, Company, Ticket, TicketItem, ActiveSession, Log, PendingRequest, Printer, CartridgeType, PrinterCartridgeCompatibility, Contractor, TicketStatus, Poll, PollOption, PollResponse, Announcement, AnnouncementRecipient, TicketChat, Task, Timer, BackupSettings, KnowledgeBaseNote
 from ticket_manager import get_ticket_manager
+from contact_utils import normalize_phone
 from printer_manager import get_printer_manager
 from pdf_report_manager import get_pdf_report_manager
 from status_manager import get_status_manager
@@ -1550,6 +1551,25 @@ def update_user_full_name(user_id):
         else:
             flash('Користувача не знайдено.', 'danger')
     
+    return redirect(url_for('users'))
+
+
+@app.route('/users/update_phone/<int:user_id>', methods=['POST'])
+@admin_required
+def update_user_phone(user_id):
+    """Оновлення телефону користувача"""
+    phone_raw = request.form.get('phone', '')
+    phone = normalize_phone(phone_raw)
+
+    with get_session() as session:
+        user = session.query(User).filter(User.user_id == user_id).first()
+        if user:
+            user.phone = phone
+            session.commit()
+            flash('Телефон користувача оновлено.', 'success')
+        else:
+            flash('Користувача не знайдено.', 'danger')
+
     return redirect(url_for('users'))
 
 

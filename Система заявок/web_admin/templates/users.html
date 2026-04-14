@@ -278,6 +278,11 @@
                                                 </button>
                                             </li>
                                             <li>
+                                                <button type="button" class="dropdown-item py-1 px-3" data-bs-toggle="modal" data-bs-target="#phoneModal{{ user.user_id }}">
+                                                    <i class="bi bi-telephone me-2 text-secondary"></i>Телефон
+                                                </button>
+                                            </li>
+                                            <li>
                                                 <button type="button" class="dropdown-item py-1 px-3" data-bs-toggle="modal" data-bs-target="#passwordModal{{ user.user_id }}">
                                                     <i class="bi bi-key me-2 text-secondary"></i>Пароль
                                                 </button>
@@ -375,6 +380,32 @@
                                                     <label class="form-label">ПІБ (Повне Ім'я та Прізвище)</label>
                                                     <input type="text" name="full_name" class="form-control" value="{{ user.full_name or '' }}" placeholder="Наприклад: Іван Петренко">
                                                     <small class="text-muted">Залиште порожнім, щоб видалити ПІБ</small>
+                                                </div>
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
+                                                <button type="submit" class="btn btn-primary">Зберегти</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Modal для телефону -->
+                            <div class="modal fade" id="phoneModal{{ user.user_id }}" tabindex="-1">
+                                <div class="modal-dialog">
+                                    <div class="modal-content">
+                                        <div class="modal-header">
+                                            <h5 class="modal-title">Редагувати телефон для @{{ user.username }}</h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                        </div>
+                                        <form method="POST" action="{{ url_for('update_user_phone', user_id=user.user_id) }}">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                            <div class="modal-body">
+                                                <div class="mb-3">
+                                                    <label class="form-label">Мобільний телефон</label>
+                                                    <input type="text" name="phone" class="form-control" value="{{ user.phone or '' }}" placeholder="+380671112233">
+                                                    <small class="text-muted">Опціонально. Можна вводити з пробілами/дужками — буде нормалізовано.</small>
                                                 </div>
                                             </div>
                                             <div class="modal-footer">

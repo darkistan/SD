@@ -107,6 +107,7 @@ class DatabaseManager:
             self.migrate_create_timers_table()
             self.migrate_add_morning_notification_time_to_user()
             self.migrate_add_new_clients_notifications_to_user()
+            self.migrate_add_phone_to_user()
 
             # Заповнюємо справочник статусів (якщо таблиця порожня)
             self.migrate_create_ticket_statuses()
@@ -450,6 +451,21 @@ class DatabaseManager:
                     logger.log_info("Додано колонку new_clients_notifications_enabled до users")
         except Exception as e:
             logger.log_error(f"Помилка міграції new_clients_notifications_enabled: {e}")
+
+    def migrate_add_phone_to_user(self):
+        """Міграція: додавання колонки phone до таблиці users"""
+        try:
+            with self.engine.begin() as conn:
+                inspector = inspect(self.engine)
+                if 'users' not in inspector.get_table_names():
+                    return
+                columns = [col['name'] for col in inspector.get_columns('users')]
+                if 'phone' not in columns:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN phone VARCHAR(50)"))
+                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_users_phone ON users(phone)"))
+                    logger.log_info("Додано колонку phone до users")
+        except Exception as e:
+            logger.log_error(f"Помилка міграції додавання phone: {e}")
 
     def migrate_add_commands_to_knowledge_base_notes(self):
         """Міграція: додавання колонки commands до таблиці knowledge_base_notes"""

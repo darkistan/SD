@@ -1,0 +1,404 @@
+{% extends "base.html" %}
+
+{% block title %}Калькулятор - Система заявок{% endblock %}
+
+{% block content %}
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<script>
+  window.__QUOTE_CALC_INITIAL_PRICES__ = {{ prices | tojson }};
+</script>
+
+<div class="row">
+  <div class="col-12">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-3">
+      <h1 class="mb-0"><i class="bi bi-calculator"></i> Калькулятор</h1>
+      <button class="btn btn-outline-light" id="qc-copy-btn" type="button">
+        <i class="bi bi-clipboard"></i> Копіювати розрахунок
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <!-- Налаштування цін -->
+  <div class="col-12 col-lg-4">
+    <div class="card shadow-sm">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <button class="btn btn-sm btn-outline-light d-flex align-items-center gap-2"
+                type="button"
+                data-bs-toggle="collapse"
+                data-bs-target="#qc-price-settings"
+                aria-expanded="false"
+                aria-controls="qc-price-settings">
+          <i class="bi bi-sliders"></i>
+          <strong>Налаштування цін</strong>
+          <i class="bi bi-chevron-down ms-1"></i>
+        </button>
+        <button class="btn btn-sm btn-primary" id="qc-save-prices-btn" type="button">
+          <i class="bi bi-save"></i> Зберегти
+        </button>
+      </div>
+      <div id="qc-price-settings" class="collapse">
+        <div class="card-body">
+        <div class="alert alert-secondary py-2 mb-3">
+          Зміни тут миттєво впливають на розрахунок. Для застосування «на завжди» натисніть <strong>Зберегти</strong>.
+        </div>
+
+        <div class="mb-3">
+          <div class="fw-semibold mb-2">Абонплата (щомісяця)</div>
+          <div class="row g-2">
+            <div class="col-12">
+              <label class="form-label mb-1">Користувач, грн/міс</label>
+              <input class="form-control form-control-sm qc-price" type="number" min="0" step="1" data-price-key="user_monthly">
+            </div>
+            <div class="col-12">
+              <label class="form-label mb-1">ПК (віддалено), грн/шт</label>
+              <input class="form-control form-control-sm qc-price" type="number" min="0" step="1" data-price-key="pc_remote">
+            </div>
+            <div class="col-12">
+              <label class="form-label mb-1">ПК (з виїздами), грн/шт</label>
+              <input class="form-control form-control-sm qc-price" type="number" min="0" step="1" data-price-key="pc_visit">
+            </div>
+            <div class="col-12">
+              <label class="form-label mb-1">Сервер Windows, грн/шт</label>
+              <input class="form-control form-control-sm qc-price" type="number" min="0" step="1" data-price-key="srv_windows">
+            </div>
+            <div class="col-12">
+              <label class="form-label mb-1">Сервер Linux, грн/шт</label>
+              <input class="form-control form-control-sm qc-price" type="number" min="0" step="1" data-price-key="srv_linux">
+            </div>
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <div class="fw-semibold mb-2">Разові роботи та послуги</div>
+          <div class="row g-2">
+            <div class="col-12">
+              <label class="form-label mb-1">Збірка ПК, грн/шт</label>
+              <input class="form-control form-control-sm qc-price" type="number" min="0" step="1" data-price-key="pc_build">
+            </div>
+            <div class="col-12">
+              <label class="form-label mb-1">Діагностика, грн/шт</label>
+              <input class="form-control form-control-sm qc-price" type="number" min="0" step="1" data-price-key="diagnostics">
+            </div>
+            <div class="col-12">
+              <label class="form-label mb-1">Windows + ПЗ, грн/шт</label>
+              <input class="form-control form-control-sm qc-price" type="number" min="0" step="1" data-price-key="win_install">
+            </div>
+            <div class="col-12">
+              <label class="form-label mb-1">Профільне ПЗ / 1С, грн/шт</label>
+              <input class="form-control form-control-sm qc-price" type="number" min="0" step="1" data-price-key="pro_software_1c">
+            </div>
+            <div class="col-12">
+              <label class="form-label mb-1">Година роботи, грн/год</label>
+              <input class="form-control form-control-sm qc-price" type="number" min="0" step="1" data-price-key="hour_work">
+            </div>
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <div class="fw-semibold mb-2">Мережа / монтаж</div>
+          <div class="row g-2">
+            <div class="col-12">
+              <label class="form-label mb-1">Фікс. настройка мережі, грн/од</label>
+              <input class="form-control form-control-sm qc-price" type="number" min="0" step="1" data-price-key="network_setup">
+            </div>
+            <div class="col-12">
+              <label class="form-label mb-1">Монтаж СКС, грн/метр</label>
+              <input class="form-control form-control-sm qc-price" type="number" min="0" step="0.1" data-price-key="sks_meter">
+            </div>
+            <div class="col-12">
+              <label class="form-label mb-1">Аудит ІБ (мін.), грн</label>
+              <input class="form-control form-control-sm qc-price" type="number" min="5000" step="1" data-price-key="sec_audit_min">
+            </div>
+          </div>
+        </div>
+
+        <div class="mb-0">
+          <div class="fw-semibold mb-2">Міграція в хмару (діапазони)</div>
+          <div class="row g-2">
+            <div class="col-12">
+              <label class="form-label mb-1">Базова: мін</label>
+              <input class="form-control form-control-sm qc-price" type="number" min="0" step="1" data-price-key="cloud_migration_base_min">
+            </div>
+            <div class="col-12">
+              <label class="form-label mb-1">Базова: дефолт</label>
+              <input class="form-control form-control-sm qc-price" type="number" min="0" step="1" data-price-key="cloud_migration_base_default">
+            </div>
+            <div class="col-12">
+              <label class="form-label mb-1">Базова: макс</label>
+              <input class="form-control form-control-sm qc-price" type="number" min="0" step="1" data-price-key="cloud_migration_base_max">
+            </div>
+
+            <div class="col-12">
+              <label class="form-label mb-1">B2B: мін</label>
+              <input class="form-control form-control-sm qc-price" type="number" min="0" step="1" data-price-key="cloud_migration_b2b_min">
+            </div>
+            <div class="col-12">
+              <label class="form-label mb-1">B2B: дефолт</label>
+              <input class="form-control form-control-sm qc-price" type="number" min="0" step="1" data-price-key="cloud_migration_b2b_default">
+            </div>
+            <div class="col-12">
+              <label class="form-label mb-1">B2B: макс</label>
+              <input class="form-control form-control-sm qc-price" type="number" min="0" step="1" data-price-key="cloud_migration_b2b_max">
+            </div>
+
+            <div class="col-12">
+              <label class="form-label mb-1">Enterprise: мін.</label>
+              <input class="form-control form-control-sm qc-price" type="number" min="40000" step="1" data-price-key="cloud_migration_enterprise_min">
+            </div>
+          </div>
+        </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-3 qc-receipt">
+      <div class="qc-receipt-title">РОЗРАХУНОК</div>
+      <div class="qc-receipt-subtitle">Калькулятор</div>
+      <div id="qc-receipt-details" class="qc-receipt-details"></div>
+      <div class="qc-receipt-divider"></div>
+
+      <div class="qc-receipt-row">
+        <div class="label">Впровадження</div>
+        <div class="value" id="qc-total-once">0 грн</div>
+      </div>
+      <div class="qc-receipt-row">
+        <div class="label">Абонплата / міс</div>
+        <div class="value" id="qc-total-monthly">0 грн</div>
+      </div>
+
+      <div class="qc-receipt-divider"></div>
+      <div class="qc-receipt-row qc-receipt-total">
+        <div class="label">Разом (1-й місяць)</div>
+        <div class="value" id="qc-total-first-month">0 грн</div>
+      </div>
+      <div class="qc-receipt-divider"></div>
+      <div class="qc-receipt-subtitle">Дякуємо!</div>
+    </div>
+  </div>
+
+  <!-- Блоки калькулятора -->
+  <div class="col-12 col-lg-8">
+    <div class="card mb-4 border-primary shadow-sm">
+      <div class="card-header bg-primary bg-opacity-10">
+        <strong>Блок 1: Абонентське обслуговування та стандартні послуги</strong>
+      </div>
+      <div class="card-body">
+        <div class="fw-semibold mb-2">Абонплата (щомісяця)</div>
+        <div class="row g-2 align-items-center mb-2">
+          <div class="col-12 col-md-6">
+            <div class="text-muted small">Параметр розрахунку</div>
+            <div class="fw-semibold">К-сть користувачів</div>
+          </div>
+          <div class="col-12 col-md-6">
+            <div class="d-flex gap-2 align-items-center">
+              <input class="form-range" type="range" id="qc-users-range" min="0" max="500" step="1" value="0">
+              <input class="form-control form-control-sm" type="number" id="qc-users-number" min="0" step="1" value="0" style="width: 110px;">
+            </div>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-3">
+            <thead>
+              <tr>
+                <th>Послуга</th>
+                <th style="width: 220px;">К-сть</th>
+                <th class="text-end">Ціна</th>
+                <th class="text-end">Сума</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="qc-item" data-kind="monthly" data-price-key="pc_remote">
+                <td>ПК (віддалено)</td>
+                <td>
+                  <div class="d-flex gap-2 align-items-center">
+                    <input class="form-range qc-qty-range" type="range" min="0" max="100" step="1" value="0">
+                    <input class="form-control form-control-sm qc-qty-number" type="number" min="0" step="1" value="0" style="width: 80px;">
+                  </div>
+                </td>
+                <td class="text-end"><span class="qc-unit-price">—</span></td>
+                <td class="text-end"><span class="qc-subtotal">0</span> грн</td>
+              </tr>
+              <tr class="qc-item" data-kind="monthly" data-price-key="pc_visit">
+                <td>ПК (з виїздами)</td>
+                <td>
+                  <div class="d-flex gap-2 align-items-center">
+                    <input class="form-range qc-qty-range" type="range" min="0" max="100" step="1" value="0">
+                    <input class="form-control form-control-sm qc-qty-number" type="number" min="0" step="1" value="0" style="width: 80px;">
+                  </div>
+                </td>
+                <td class="text-end"><span class="qc-unit-price">—</span></td>
+                <td class="text-end"><span class="qc-subtotal">0</span> грн</td>
+              </tr>
+              <tr class="qc-item" data-kind="monthly" data-price-key="srv_windows">
+                <td>Сервер Windows</td>
+                <td>
+                  <div class="d-flex gap-2 align-items-center">
+                    <input class="form-range qc-qty-range" type="range" min="0" max="50" step="1" value="0">
+                    <input class="form-control form-control-sm qc-qty-number" type="number" min="0" step="1" value="0" style="width: 80px;">
+                  </div>
+                </td>
+                <td class="text-end"><span class="qc-unit-price">—</span></td>
+                <td class="text-end"><span class="qc-subtotal">0</span> грн</td>
+              </tr>
+              <tr class="qc-item" data-kind="monthly" data-price-key="srv_linux">
+                <td>Сервер Linux</td>
+                <td>
+                  <div class="d-flex gap-2 align-items-center">
+                    <input class="form-range qc-qty-range" type="range" min="0" max="50" step="1" value="0">
+                    <input class="form-control form-control-sm qc-qty-number" type="number" min="0" step="1" value="0" style="width: 80px;">
+                  </div>
+                </td>
+                <td class="text-end"><span class="qc-unit-price">—</span></td>
+                <td class="text-end"><span class="qc-subtotal">0</span> грн</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="fw-semibold mb-2">Разові роботи та послуги</div>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-3">
+            <thead>
+              <tr>
+                <th>Увімкнути</th>
+                <th>Послуга</th>
+                <th style="width: 220px;">К-сть</th>
+                <th class="text-end">Ціна</th>
+                <th class="text-end">Сума</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% set one_time_items = [
+                ('pc_build','Збірка ПК'),
+                ('diagnostics','Діагностика'),
+                ('win_install','Windows + ПЗ'),
+                ('pro_software_1c','Профільне ПЗ / 1С'),
+                ('hour_work','Години роботи'),
+                ('network_setup','Фікс. настройка мережі'),
+              ] %}
+              {% for key, label in one_time_items %}
+              <tr class="qc-item" data-kind="once" data-price-key="{{ key }}"
+                  {% if key == 'hour_work' %}data-unit-label="год"{% elif key == 'network_setup' %}data-unit-label="од"{% else %}data-unit-label="шт"{% endif %}>
+                <td class="text-center">
+                  <input class="form-check-input qc-enabled" type="checkbox">
+                </td>
+                <td>{{ label }}</td>
+                <td>
+                  <div class="d-flex gap-2 align-items-center">
+                    <input class="form-range qc-qty-range" type="range" min="0" max="100" step="1" value="0" disabled>
+                    <input class="form-control form-control-sm qc-qty-number" type="number" min="0" step="1" value="0" style="width: 80px;" disabled>
+                  </div>
+                </td>
+                <td class="text-end"><span class="qc-unit-price">—</span></td>
+                <td class="text-end"><span class="qc-subtotal">0</span> грн</td>
+              </tr>
+              {% endfor %}
+
+              <tr class="qc-item" data-kind="once" data-price-key="sks_meter" data-unit-label="м">
+                <td class="text-center">
+                  <input class="form-check-input qc-enabled" type="checkbox">
+                </td>
+                <td>Монтаж СКС (метри)</td>
+                <td>
+                  <div class="d-flex gap-2 align-items-center">
+                    <input class="form-range qc-qty-range" type="range" min="0" max="1000" step="1" value="0" disabled>
+                    <input class="form-control form-control-sm qc-qty-number" type="number" min="0" step="1" value="0" style="width: 80px;" disabled>
+                  </div>
+                </td>
+                <td class="text-end"><span class="qc-unit-price">—</span></td>
+                <td class="text-end"><span class="qc-subtotal">0</span> грн</td>
+              </tr>
+
+              <tr class="qc-item" data-kind="once" data-price-key="sec_audit_min">
+                <td class="text-center">
+                  <input class="form-check-input qc-enabled" type="checkbox">
+                </td>
+                <td>Аудит ІБ</td>
+                <td class="text-muted">Так / Ні</td>
+                <td class="text-end"><span class="qc-unit-price">—</span></td>
+                <td class="text-end"><span class="qc-subtotal">0</span> грн</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mb-4 border-info shadow-sm">
+      <div class="card-header bg-info bg-opacity-10">
+        <strong>Блок 2: Проєктні роботи (Міграція в хмару)</strong>
+      </div>
+      <div class="card-body">
+        <div class="form-check form-switch mb-2">
+          <input class="form-check-input" type="checkbox" role="switch" id="qc-migration-enabled">
+          <label class="form-check-label" for="qc-migration-enabled">Увімкнути міграцію</label>
+        </div>
+
+        <div class="row g-2 align-items-end">
+          <div class="col-12 col-md-6">
+            <label class="form-label">Тип</label>
+            <select class="form-select" id="qc-migration-type" disabled>
+              <option value="base">Базова (8 000 – 15 000)</option>
+              <option value="b2b">Стандартна B2B (15 000 – 35 000)</option>
+              <option value="enterprise">Складна / Enterprise (від 40 000)</option>
+            </select>
+          </div>
+          <div class="col-12 col-md-6">
+            <label class="form-label">Сума, грн</label>
+            <div class="d-flex gap-2 align-items-center">
+              <input class="form-range" type="range" id="qc-migration-range" min="0" max="0" step="1" value="0" disabled>
+              <input class="form-control" type="number" id="qc-migration-amount" min="0" step="1" value="0" disabled style="width: 160px;">
+            </div>
+            <div class="text-muted small mt-1" id="qc-migration-hint">—</div>
+          </div>
+        </div>
+
+        <div class="mt-3 d-flex justify-content-end">
+          <div class="text-end">
+            <div class="text-muted">Сума міграції</div>
+            <div class="fw-bold"><span id="qc-migration-subtotal">0</span> грн</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card border-warning shadow-sm">
+      <div class="card-header bg-warning bg-opacity-10">
+        <strong>Блок 3: Індивідуальне хмаро</strong>
+      </div>
+      <div class="card-body">
+        <div class="form-check form-switch mb-3">
+          <input class="form-check-input" type="checkbox" role="switch" id="qc-privatecloud-enabled">
+          <label class="form-check-label" for="qc-privatecloud-enabled">Увімкнути індивідуальне хмаро</label>
+        </div>
+
+        <div class="row g-2">
+          <div class="col-12 col-md-6">
+            <label class="form-label">Оренда ресурсів (собівартість), грн/міс</label>
+            <input class="form-control" type="number" min="0" step="1" value="0" id="qc-privatecloud-cost" disabled>
+          </div>
+          <div class="col-12 col-md-6">
+            <label class="form-label">Обслуговування (моя надбавка), грн/міс</label>
+            <input class="form-control" type="number" min="0" step="1" value="0" id="qc-privatecloud-margin" disabled>
+          </div>
+        </div>
+
+        <div class="mt-3 d-flex justify-content-end">
+          <div class="text-end">
+            <div class="text-muted">Щомісяця за хмаро</div>
+            <div class="fw-bold"><span id="qc-privatecloud-subtotal">0</span> грн</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/quote_calculator.js') }}"></script>
+{% endblock %}
+

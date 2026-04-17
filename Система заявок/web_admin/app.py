@@ -4,8 +4,10 @@ Flask веб-інтерфейс для системи заявок
 import os
 import sys
 import uuid
+import json
 from datetime import datetime, timedelta
 from functools import wraps
+from typing import Optional, Tuple
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file, session as flask_session
 from flask_wtf import CSRFProtect
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
@@ -298,6 +300,112 @@ def admin_required(f):
             return redirect(url_for('dashboard'))
         return f(*args, **kwargs)
     return decorated_function
+
+
+def _quote_calc_default_prices() -> dict:
+    """Дефолтні ціни (грн) для калькулятора КП."""
+    return {
+        # Блок 1: абонплата (щомісячно)
+        "pc_remote": 300,
+        "pc_visit": 500,
+        "srv_windows": 1500,
+        "srv_linux": 2500,
+        "user_monthly": 300,
+
+        # Блок 1: разові послуги
+        "pc_build": 1500,
+        "diagnostics": 1000,
+        "win_install": 1000,
+        "pro_software_1c": 600,
+        "hour_work": 1000,
+
+        # Блок 1: мережа/монтаж
+        "network_setup": 600,
+        "sks_meter": 16,
+        "sec_audit_min": 5000,
+
+        # Блок 2: міграція (діапазони та дефолти)
+        "cloud_migration_base_min": 8000,
+        "cloud_migration_base_default": 12000,
+        "cloud_migration_base_max": 15000,
+
+        "cloud_migration_b2b_min": 15000,
+        "cloud_migration_b2b_default": 25000,
+        "cloud_migration_b2b_max": 35000,
+
+        "cloud_migration_enterprise_min": 40000,
+    }
+
+
+def _quote_calc_load_prices() -> dict:
+    """Завантажити прайс з БД (BotConfig) з fallback на дефолти."""
+    key = "quote_calc_prices_v1"
+    defaults = _quote_calc_default_prices()
+    raw = get_bot_config(key)
+    if not raw:
+        return defaults
+    try:
+        data = json.loads(raw)
+        if not isinstance(data, dict):
+            return defaults
+        # Підмішуємо дефолти на випадок відсутніх ключів
+        merged = dict(defaults)
+        merged.update(data)
+        return merged
+    except Exception:
+        return defaults
+
+
+def _quote_calc_validate_prices(prices: dict) -> Tuple[bool, str, dict]:
+    """
+    Валідувати та нормалізувати прайс калькулятора.
+
+    Returns:
+        (ok, error_message, normalized_prices)
+    """
+    defaults = _quote_calc_default_prices()
+    if not isinstance(prices, dict):
+        return False, "Невірний формат даних (очікується JSON об'єкт).", defaults
+
+    normalized: dict = {}
+    for key, default_value in defaults.items():
+        value = prices.get(key, default_value)
+        try:
+            n = float(value)
+        except (TypeError, ValueError):
+            n = float(default_value)
+
+        if n < 0:
+            return False, f"Ціна '{key}' не може бути від'ємною.", defaults
+
+        # Переважно ціни цілими, але залишимо можливість дробу (наприклад, 16.5 грн/м)
+        normalized[key] = int(n) if float(n).is_integer() else n
+
+    # Мінімальні пороги
+    if float(normalized.get("sec_audit_min", 0)) < 5000:
+        return False, "Аудит ІБ не може бути менше 5000 грн.", defaults
+    if float(normalized.get("cloud_migration_enterprise_min", 0)) < 40000:
+        return False, "Enterprise міграція не може бути менше 40000 грн.", defaults
+
+    # Діапазони міграції: min <= default <= max
+    def _check_range(prefix: str) -> Optional[str]:
+        min_v = float(normalized.get(f"{prefix}_min", 0))
+        def_v = float(normalized.get(f"{prefix}_default", 0))
+        max_v = float(normalized.get(f"{prefix}_max", 0))
+        if min_v > max_v:
+            return f"Діапазон '{prefix}': мінімум не може бути більшим за максимум."
+        if not (min_v <= def_v <= max_v):
+            return f"Діапазон '{prefix}': дефолт має бути в межах мін/макс."
+        return None
+
+    err = _check_range("cloud_migration_base")
+    if err:
+        return False, err, defaults
+    err = _check_range("cloud_migration_b2b")
+    if err:
+        return False, err, defaults
+
+    return True, "", normalized
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -2600,6 +2708,34 @@ def reports():
     all_statuses = status_manager.get_all_statuses(active_only=True)
     
     return render_template('reports.html', companies=companies, contractors=contractors, all_statuses=all_statuses)
+
+
+@app.route('/admin/quote-calculator')
+@admin_required
+def quote_calculator():
+    """Калькулятор комерційних пропозицій."""
+    prices = _quote_calc_load_prices()
+    return render_template('quote_calculator.html', prices=prices)
+
+
+@app.get('/api/quote-calculator/prices')
+@admin_required
+def api_quote_calculator_prices_get():
+    """Отримати прайс калькулятора КП."""
+    return jsonify({"prices": _quote_calc_load_prices()})
+
+
+@app.post('/api/quote-calculator/prices')
+@admin_required
+def api_quote_calculator_prices_post():
+    """Оновити прайс калькулятора КП."""
+    payload = request.get_json(silent=True) or {}
+    ok, error_message, normalized = _quote_calc_validate_prices(payload.get("prices", payload))
+    if not ok:
+        return jsonify({"ok": False, "error": error_message}), 400
+
+    set_bot_config("quote_calc_prices_v1", json.dumps(normalized, ensure_ascii=False))
+    return jsonify({"ok": True, "prices": normalized})
 
 
 @app.route('/tickets/create', methods=['GET', 'POST'])

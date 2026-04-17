@@ -5,6 +5,7 @@
 """
 import os
 import time
+import json
 from contextlib import contextmanager
 from typing import Optional, Generator
 from sqlalchemy import create_engine, event, text, inspect
@@ -125,6 +126,9 @@ class DatabaseManager:
             
             # Створюємо налаштування резервного копіювання за замовчуванням
             self.create_default_backup_settings()
+
+            # Створюємо дефолтний прайс для калькулятора КП
+            self.create_default_quote_calculator_prices()
             
             return True
         except Exception as e:
@@ -215,6 +219,70 @@ class DatabaseManager:
                 logger.log_info("Створено налаштування резервного копіювання за замовчуванням")
         except Exception as e:
             logger.log_error(f"Помилка створення налаштувань резервного копіювання: {e}")
+
+    def create_default_quote_calculator_prices(self) -> None:
+        """Створення дефолтного прайсу для калькулятора КП (BotConfig)."""
+        try:
+            # Перевіряємо чи існує таблиця bot_config
+            inspector = inspect(self.engine)
+            if 'bot_config' not in inspector.get_table_names():
+                return
+
+            default_prices = {
+                # Блок 1: абонплата (щомісячно)
+                "pc_remote": 300,
+                "pc_visit": 500,
+                "srv_windows": 1500,
+                "srv_linux": 2500,
+                "user_monthly": 300,
+
+                # Блок 1: разові послуги
+                "pc_build": 1500,
+                "diagnostics": 1000,
+                "win_install": 1000,
+                "pro_software_1c": 600,
+                "hour_work": 1000,
+
+                # Блок 1: мережа/монтаж
+                "network_setup": 600,
+                "sks_meter": 16,
+                "sec_audit_min": 5000,
+
+                # Блок 2: міграція (діапазони та дефолти)
+                "cloud_migration_base_min": 8000,
+                "cloud_migration_base_default": 12000,
+                "cloud_migration_base_max": 15000,
+
+                "cloud_migration_b2b_min": 15000,
+                "cloud_migration_b2b_default": 25000,
+                "cloud_migration_b2b_max": 35000,
+
+                "cloud_migration_enterprise_min": 40000,
+            }
+
+            key = "quote_calc_prices_v1"
+            with self.SessionLocal() as session:
+                row = session.query(BotConfig).filter(BotConfig.key == key).first()
+                if row and row.value:
+                    return
+
+                value = json.dumps(default_prices, ensure_ascii=False)
+                if row:
+                    row.value = value
+                    if not row.description:
+                        row.description = "Прайс калькулятора комерційних пропозицій (JSON)"
+                else:
+                    session.add(
+                        BotConfig(
+                            key=key,
+                            value=value,
+                            description="Прайс калькулятора комерційних пропозицій (JSON)",
+                        )
+                    )
+                session.commit()
+                logger.log_info("Створено дефолтний прайс для калькулятора КП (BotConfig)")
+        except Exception as e:
+            logger.log_error(f"Помилка створення дефолтного прайсу калькулятора КП: {e}")
     
     def migrate_add_company_id_to_user(self):
         """Міграція: додавання колонки company_id до таблиці users"""

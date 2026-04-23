@@ -16,7 +16,8 @@
                 <h5 class="mb-0">Звіт по заявках</h5>
             </div>
             <div class="card-body">
-                <form method="POST" action="{{ url_for('generate_pdf_report') }}">
+                {# PDF у новій вкладці — у standalone PWA відповідь інакше підміняє вікно без «Назад» #}
+                <form method="POST" action="{{ url_for('generate_pdf_report') }}" target="_blank">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <input type="hidden" name="report_type" value="tickets_report"/>
                     
@@ -54,7 +55,7 @@
                 <h5 class="mb-0">Заявка підряднику на заправку</h5>
             </div>
             <div class="card-body">
-                <form method="POST" action="{{ url_for('generate_pdf_report') }}">
+                <form method="POST" action="{{ url_for('generate_pdf_report') }}" target="_blank">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <input type="hidden" name="report_type" value="contractor_refill"/>
                     
@@ -103,7 +104,7 @@
                 <h5 class="mb-0">Заявка підряднику на ремонт</h5>
             </div>
             <div class="card-body">
-                <form method="POST" action="{{ url_for('generate_pdf_report') }}">
+                <form method="POST" action="{{ url_for('generate_pdf_report') }}" target="_blank">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <input type="hidden" name="report_type" value="contractor_repair"/>
                     

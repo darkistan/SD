@@ -3,6 +3,7 @@
 """
 import os
 from web_admin.app import app
+from app_version import APP_VERSION
 
 if __name__ == '__main__':
     # Перевіряємо режим роботи з змінних середовища
@@ -20,10 +21,11 @@ if __name__ == '__main__':
         from waitress import serve
         
         print("=" * 60)
-        print("🌐 Запуск веб-інтерфейсу Система заявок (Production)")
+        print("Запуск веб-інтерфейсу Система заявок (Production)")
+        print(f"Версія застосунку: {APP_VERSION}")
         print("=" * 60)
-        print(f"\n📍 Адреса: http://{host}:{port}")
-        print("💡 Натисніть Ctrl+C для зупинки\n")
+        print(f"\nАдреса: http://{host}:{port}")
+        print("Натисніть Ctrl+C для зупинки\n")
         
         # Конфігурація Waitress для production
         serve(
@@ -38,10 +40,11 @@ if __name__ == '__main__':
     else:
         # Development режим - стандартний Flask сервер
         print("=" * 60)
-        print("🌐 Запуск веб-інтерфейсу Система заявок (Development)")
+        print("Запуск веб-інтерфейсу Система заявок (Development)")
+        print(f"Версія застосунку: {APP_VERSION}")
         print("=" * 60)
-        print(f"\n📍 Адреса: http://{host}:{port}")
-        print("💡 Натисніть Ctrl+C для зупинки\n")
+        print(f"\nАдреса: http://{host}:{port}")
+        print("Натисніть Ctrl+C для зупинки\n")
         
         app.run(host=host, port=port, debug=flask_debug)
 

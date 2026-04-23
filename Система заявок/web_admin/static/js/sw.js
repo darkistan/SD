@@ -1,6 +1,8 @@
 // Service Worker для Системи заявок PWA
-const CACHE_NAME = 'tickets-system-v1';
-const SW_VERSION = '1.0.0';
+// Плейсхолдер __APP_RELEASE__ підставляється сервером у маршруті /sw.js (app_version.APP_VERSION)
+const APP_RELEASE = '__APP_RELEASE__';
+const CACHE_NAME = 'tickets-system-' + APP_RELEASE.replace(/\./g, '-');
+const SW_VERSION = APP_RELEASE;
 
 // Подія install - виконується при встановленні service worker
 self.addEventListener('install', function(event) {

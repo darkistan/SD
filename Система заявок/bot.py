@@ -22,6 +22,7 @@ from telegram.error import Conflict, TimedOut, NetworkError, RetryAfter, BadRequ
 
 from auth import auth_manager
 from logger import logger
+from app_version import APP_VERSION
 from csrf_manager import csrf_manager
 from input_validator import input_validator
 from database import init_database, get_session, get_bot_config
@@ -2312,7 +2313,8 @@ def main():
     
     # Ініціалізуємо БД
     init_database()
-    
+    logger.log_info(f"Запуск Telegram-бота, версія застосунку {APP_VERSION}")
+
     # Створюємо додаток
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     

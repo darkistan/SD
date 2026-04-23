@@ -12,9 +12,14 @@
   <div class="col-12">
     <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-3">
       <h1 class="mb-0"><i class="bi bi-calculator"></i> Калькулятор</h1>
-      <button class="btn btn-outline-light" id="qc-copy-btn" type="button">
-        <i class="bi bi-clipboard"></i> Копіювати розрахунок
-      </button>
+      <div class="d-flex gap-2 flex-wrap">
+        <button class="btn btn-outline-light" id="qc-copy-btn" type="button">
+          <i class="bi bi-clipboard"></i> Копіювати розрахунок
+        </button>
+        <button class="btn btn-outline-light" id="qc-pdf-btn" type="button">
+          <i class="bi bi-file-pdf"></i> Зберегти чек PDF
+        </button>
+      </div>
     </div>
   </div>
 </div>
@@ -149,6 +154,49 @@
             </div>
           </div>
         </div>
+
+        <hr class="my-3">
+
+        <div class="mb-0">
+          <div class="fw-semibold mb-2">VPS (ціни в €, курс для грн)</div>
+          <div class="row g-2">
+            <div class="col-12">
+              <label class="form-label mb-1">Курс EUR→UAH (грн за 1 €)</label>
+              <input class="form-control form-control-sm qc-price" type="number" min="0.01" step="0.01" data-price-key="vps_eur_uah_rate">
+            </div>
+
+            <div class="col-12 col-md-6">
+              <label class="form-label mb-1">vCPU, €/ядро</label>
+              <input class="form-control form-control-sm qc-price" type="number" min="0" step="0.01" data-price-key="vps_vcpu_eur">
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label mb-1">RAM DDR5, €/ГБ</label>
+              <input class="form-control form-control-sm qc-price" type="number" min="0" step="0.01" data-price-key="vps_ram_gb_eur">
+            </div>
+
+            <div class="col-12 col-md-6">
+              <label class="form-label mb-1">NVMe SSD, €/10 ГБ</label>
+              <input class="form-control form-control-sm qc-price" type="number" min="0" step="0.01" data-price-key="vps_nvme_10gb_eur">
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label mb-1">SATA SSD, €/10 ГБ</label>
+              <input class="form-control form-control-sm qc-price" type="number" min="0" step="0.01" data-price-key="vps_sata_10gb_eur">
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label mb-1">HDD диск, €/10 ГБ</label>
+              <input class="form-control form-control-sm qc-price" type="number" min="0" step="0.01" data-price-key="vps_hdd_10gb_eur">
+            </div>
+
+            <div class="col-12 col-md-6">
+              <label class="form-label mb-1">IPv4 Address, €/шт</label>
+              <input class="form-control form-control-sm qc-price" type="number" min="0" step="0.01" data-price-key="vps_ipv4_eur">
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label mb-1">Extra Backup, €/копія</label>
+              <input class="form-control form-control-sm qc-price" type="number" min="0" step="0.01" data-price-key="vps_extra_backup_copy_eur">
+            </div>
+          </div>
+        </div>
         </div>
       </div>
     </div>
@@ -180,11 +228,51 @@
 
   <!-- Блоки калькулятора -->
   <div class="col-12 col-lg-8">
-    <div class="card mb-4 border-primary shadow-sm">
-      <div class="card-header bg-primary bg-opacity-10">
-        <strong>Блок 1: Абонентське обслуговування та стандартні послуги</strong>
+    <div class="card mb-4 border-success shadow-sm">
+      <div class="card-header bg-success bg-opacity-10 d-flex justify-content-between align-items-center">
+        <button class="btn btn-sm btn-outline-success d-flex align-items-center gap-2"
+                type="button"
+                data-bs-toggle="collapse"
+                data-bs-target="#qc-discount-block"
+                aria-expanded="false"
+                aria-controls="qc-discount-block">
+          <strong>Знижки</strong>
+          <i class="bi bi-chevron-down ms-1"></i>
+        </button>
       </div>
-      <div class="card-body">
+      <div id="qc-discount-block" class="collapse">
+        <div class="card-body">
+          <div class="row g-2 align-items-end">
+            <div class="col-12 col-md-6">
+              <label class="form-label">Знижка на разові роботи та послуги, %</label>
+              <input class="form-control" type="number" min="0" max="100" step="0.1" value="0" id="qc-discount-once">
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label">Знижка на абонплату (щомісяця), %</label>
+              <input class="form-control" type="number" min="0" max="100" step="0.1" value="0" id="qc-discount-monthly">
+            </div>
+          </div>
+          <div class="text-muted small mt-2">
+            Знижки застосовуються до підсумків відповідних частин розрахунку.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mb-4 border-primary shadow-sm">
+      <div class="card-header bg-primary bg-opacity-10 d-flex justify-content-between align-items-center">
+        <button class="btn btn-sm btn-outline-primary d-flex align-items-center gap-2"
+                type="button"
+                data-bs-toggle="collapse"
+                data-bs-target="#qc-block-1"
+                aria-expanded="false"
+                aria-controls="qc-block-1">
+          <strong>Блок 1: Абонентське обслуговування та стандартні послуги</strong>
+          <i class="bi bi-chevron-down ms-1"></i>
+        </button>
+      </div>
+      <div id="qc-block-1" class="collapse">
+        <div class="card-body">
         <div class="fw-semibold mb-2">Абонплата (щомісяця)</div>
         <div class="row g-2 align-items-center mb-2">
           <div class="col-12 col-md-6">
@@ -323,14 +411,24 @@
             </tbody>
           </table>
         </div>
+        </div>
       </div>
     </div>
 
     <div class="card mb-4 border-info shadow-sm">
-      <div class="card-header bg-info bg-opacity-10">
-        <strong>Блок 2: Проєктні роботи (Міграція в хмару)</strong>
+      <div class="card-header bg-info bg-opacity-10 d-flex justify-content-between align-items-center">
+        <button class="btn btn-sm btn-outline-info d-flex align-items-center gap-2"
+                type="button"
+                data-bs-toggle="collapse"
+                data-bs-target="#qc-block-2"
+                aria-expanded="false"
+                aria-controls="qc-block-2">
+          <strong>Блок 2: Проєктні роботи (Міграція в хмару)</strong>
+          <i class="bi bi-chevron-down ms-1"></i>
+        </button>
       </div>
-      <div class="card-body">
+      <div id="qc-block-2" class="collapse">
+        <div class="card-body">
         <div class="form-check form-switch mb-2">
           <input class="form-check-input" type="checkbox" role="switch" id="qc-migration-enabled">
           <label class="form-check-label" for="qc-migration-enabled">Увімкнути міграцію</label>
@@ -361,35 +459,172 @@
             <div class="fw-bold"><span id="qc-migration-subtotal">0</span> грн</div>
           </div>
         </div>
+        </div>
       </div>
     </div>
 
     <div class="card border-warning shadow-sm">
-      <div class="card-header bg-warning bg-opacity-10">
-        <strong>Блок 3: Індивідуальне хмаро</strong>
+      <div class="card-header bg-warning bg-opacity-10 d-flex justify-content-between align-items-center">
+        <button class="btn btn-sm btn-outline-warning d-flex align-items-center gap-2"
+                type="button"
+                data-bs-toggle="collapse"
+                data-bs-target="#qc-block-3"
+                aria-expanded="false"
+                aria-controls="qc-block-3">
+          <strong>Блок 3: VPS (індивідуальний тариф)</strong>
+          <i class="bi bi-chevron-down ms-1"></i>
+        </button>
       </div>
-      <div class="card-body">
-        <div class="form-check form-switch mb-3">
-          <input class="form-check-input" type="checkbox" role="switch" id="qc-privatecloud-enabled">
-          <label class="form-check-label" for="qc-privatecloud-enabled">Увімкнути індивідуальне хмаро</label>
+      <div id="qc-block-3" class="collapse">
+        <div class="card-body">
+        <div class="alert alert-secondary py-2 mb-3">
+          Розрахунок ведеться в <strong>€</strong>. Підсумок також показується в <strong>грн</strong> за курсом з «Налаштувань цін» (параметр <strong>EUR→UAH</strong>).
         </div>
 
-        <div class="row g-2">
-          <div class="col-12 col-md-6">
-            <label class="form-label">Оренда ресурсів (собівартість), грн/міс</label>
-            <input class="form-control" type="number" min="0" step="1" value="0" id="qc-privatecloud-cost" disabled>
-          </div>
-          <div class="col-12 col-md-6">
-            <label class="form-label">Обслуговування (моя надбавка), грн/міс</label>
-            <input class="form-control" type="number" min="0" step="1" value="0" id="qc-privatecloud-margin" disabled>
-          </div>
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+          <div class="fw-semibold">Позиції VPS</div>
+          <button class="btn btn-sm btn-outline-warning" id="qc-vps-add" type="button">
+            <i class="bi bi-plus-circle"></i> Додати VPS
+          </button>
         </div>
 
-        <div class="mt-3 d-flex justify-content-end">
-          <div class="text-end">
-            <div class="text-muted">Щомісяця за хмаро</div>
-            <div class="fw-bold"><span id="qc-privatecloud-subtotal">0</span> грн</div>
+        <div id="qc-vps-items" class="d-flex flex-column gap-3"></div>
+
+        <template id="qc-vps-item-template">
+          <div class="card border-warning-subtle shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <div class="fw-semibold qc-vps-item-title">VPS</div>
+              <button class="btn btn-sm btn-outline-danger qc-remove-item" type="button">
+                <i class="bi bi-trash"></i> Видалити
+              </button>
+            </div>
+            <div class="card-body">
+              <div class="row g-2 align-items-end">
+                <div class="col-12">
+                  <label class="form-label">Опис (буде виведено у розрахунок)</label>
+                  <input class="form-control qc-vps-desc" type="text" maxlength="160" placeholder="Напр.: VPS для сайту (Hetzner)">
+                </div>
+                <div class="col-12">
+                  <label class="form-label">Коментар</label>
+                  <textarea class="form-control qc-vps-comment" rows="2" maxlength="500" placeholder="Додаткові примітки для розрахунку (опційно)"></textarea>
+                </div>
+
+                <div class="col-12 col-md-6">
+                  <label class="form-label">vCPU (ядра)</label>
+                  <input class="form-control qc-vps-cores" type="number" min="0" max="256" step="1" value="0">
+                </div>
+                <div class="col-12 col-md-6">
+                  <label class="form-label">RAM DDR5 (ГБ)</label>
+                  <input class="form-control qc-vps-ram-gb" type="number" min="0" max="2048" step="1" value="0">
+                </div>
+
+                <div class="col-12 col-md-6">
+                  <label class="form-label">NVMe SSD (ГБ, крок 10 ГБ)</label>
+                  <input class="form-control qc-vps-nvme-gb" type="number" min="0" max="100000" step="1" value="0">
+                  <div class="text-muted small mt-1">Тарифікація: кожні 10 ГБ (округлення в більшу сторону)</div>
+                </div>
+                <div class="col-12 col-md-6">
+                  <label class="form-label">SATA SSD (ГБ, крок 10 ГБ)</label>
+                  <input class="form-control qc-vps-sata-gb" type="number" min="0" max="100000" step="1" value="0">
+                  <div class="text-muted small mt-1">Тарифікація: кожні 10 ГБ (округлення в більшу сторону)</div>
+                </div>
+                <div class="col-12 col-md-6">
+                  <label class="form-label">HDD диск (ГБ, крок 10 ГБ)</label>
+                  <input class="form-control qc-vps-hdd-gb" type="number" min="0" max="100000" step="1" value="0">
+                  <div class="text-muted small mt-1">Тарифікація: кожні 10 ГБ (округлення в більшу сторону)</div>
+                </div>
+
+                <div class="col-12 col-md-6">
+                  <label class="form-label">IPv4 адреси (шт.)</label>
+                  <input class="form-control qc-vps-ipv4" type="number" min="0" max="64" step="1" value="0">
+                </div>
+                <div class="col-12 col-md-6">
+                  <label class="form-label">Extra Backup (кількість додаткових копій, починаючи з 4-ї)</label>
+                  <input class="form-control qc-vps-extra-backup-copies" type="number" min="0" max="365" step="1" value="0">
+                </div>
+              </div>
+
+              <div class="mt-3 d-flex justify-content-end">
+                <div class="text-end">
+                  <div class="text-muted">VPS / міс</div>
+                  <div class="fw-bold">
+                    <span class="qc-vps-subtotal-eur">0</span> €/міс
+                    <span class="text-muted ms-2">/</span>
+                    <span class="qc-vps-subtotal-uah">0</span> грн/міс
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
+        </template>
+        </div>
+      </div>
+    </div>
+
+    <div class="card border-secondary shadow-sm mt-4">
+      <div class="card-header bg-secondary bg-opacity-10 d-flex justify-content-between align-items-center">
+        <button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-2"
+                type="button"
+                data-bs-toggle="collapse"
+                data-bs-target="#qc-block-4"
+                aria-expanded="false"
+                aria-controls="qc-block-4">
+          <strong>Блок 4: VDS (фіксована оренда)</strong>
+          <i class="bi bi-chevron-down ms-1"></i>
+        </button>
+      </div>
+      <div id="qc-block-4" class="collapse">
+        <div class="card-body">
+          <div class="alert alert-secondary py-2 mb-3">
+            Вкажіть фіксовану суму оренди VDS в <strong>€ / міс</strong>. Підсумок також показується в <strong>грн</strong> за курсом EUR→UAH з «Налаштувань цін».
+          </div>
+
+          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+            <div class="fw-semibold">Позиції VDS</div>
+            <button class="btn btn-sm btn-outline-secondary" id="qc-vds-add" type="button">
+              <i class="bi bi-plus-circle"></i> Додати VDS
+            </button>
+          </div>
+
+          <div id="qc-vds-items" class="d-flex flex-column gap-3"></div>
+
+          <template id="qc-vds-item-template">
+            <div class="card border-secondary-subtle shadow-sm">
+              <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div class="fw-semibold qc-vds-item-title">VDS</div>
+                <button class="btn btn-sm btn-outline-danger qc-remove-item" type="button">
+                  <i class="bi bi-trash"></i> Видалити
+                </button>
+              </div>
+              <div class="card-body">
+                <div class="row g-2 align-items-end">
+                  <div class="col-12 col-md-8">
+                    <label class="form-label">Опис (буде виведено у розрахунок)</label>
+                    <input class="form-control qc-vds-desc" type="text" maxlength="160" placeholder="Напр.: VDS для CRM (Hetzner)">
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label">Коментар</label>
+                    <textarea class="form-control qc-vds-comment" rows="2" maxlength="500" placeholder="Додаткові примітки для розрахунку (опційно)"></textarea>
+                  </div>
+                  <div class="col-12 col-md-4">
+                    <label class="form-label">Оренда, €/міс</label>
+                    <input class="form-control qc-vds-eur" type="number" min="0" step="0.01" value="0">
+                  </div>
+                </div>
+
+                <div class="mt-3 d-flex justify-content-end">
+                  <div class="text-end">
+                    <div class="text-muted">VDS / міс</div>
+                    <div class="fw-bold">
+                      <span class="qc-vds-subtotal-eur">0</span> €/міс
+                      <span class="text-muted ms-2">/</span>
+                      <span class="qc-vds-subtotal-uah">0</span> грн/міс
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </template>
         </div>
       </div>
     </div>

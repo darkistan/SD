@@ -118,6 +118,77 @@ class PDFReportManager:
             self._ukrainian_font = 'Helvetica'
             self._ukrainian_font_bold = 'Helvetica-Bold'
     
+    def generate_quote_receipt_pdf(self, title: str, lines: List[str]) -> BytesIO:
+        """
+        Згенерувати PDF-чек з довільних рядків (під калькулятор/копіювання).
+
+        Args:
+            title: Заголовок документа.
+            lines: Рядки тексту чеку (безпечний plain text).
+
+        Returns:
+            BytesIO з PDF.
+        """
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=A4,
+            rightMargin=15 * mm,
+            leftMargin=15 * mm,
+            topMargin=15 * mm,
+            bottomMargin=15 * mm,
+            title=title,
+        )
+
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            name="QuoteTitle",
+            parent=styles["Title"],
+            fontName=self._ukrainian_font_bold,
+            fontSize=16,
+            leading=20,
+            spaceAfter=10,
+        )
+        body_style = ParagraphStyle(
+            name="QuoteBody",
+            parent=styles["BodyText"],
+            fontName=self._ukrainian_font,
+            fontSize=10.5,
+            leading=14,
+            spaceAfter=2,
+        )
+        meta_style = ParagraphStyle(
+            name="QuoteMeta",
+            parent=styles["BodyText"],
+            fontName=self._ukrainian_font,
+            fontSize=9.5,
+            leading=12,
+            textColor=colors.grey,
+            spaceAfter=8,
+        )
+
+        story: List[Any] = []
+        story.append(Paragraph(title, title_style))
+        story.append(Paragraph(f"Дата: {datetime.now().strftime('%Y-%m-%d %H:%M')}", meta_style))
+        story.append(Spacer(1, 4 * mm))
+
+        for raw in lines:
+            text = (raw or "").strip()
+            if not text:
+                story.append(Spacer(1, 3 * mm))
+                continue
+            # Paragraph розуміє базовий markup — екрануємо мінімально
+            safe = (
+                text.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+            )
+            story.append(Paragraph(safe, body_style))
+
+        doc.build(story)
+        buffer.seek(0)
+        return buffer
+
     def generate_tickets_report(
         self,
         tickets: List[Dict[str, Any]],

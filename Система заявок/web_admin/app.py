@@ -8,7 +8,7 @@ import json
 from datetime import datetime, timedelta
 from functools import wraps
 from typing import Optional, Tuple
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file, session as flask_session
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file, session as flask_session, Response
 from flask_wtf import CSRFProtect
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask_limiter import Limiter
@@ -36,6 +36,12 @@ from backup_manager import get_backup_manager
 from knowledge_base_manager import get_knowledge_base_manager
 from auth import auth_manager
 from logger import logger
+from app_version import APP_VERSION
+from web_admin.quote_calc import (
+    quote_calc_load_prices,
+    quote_calc_save_prices,
+    quote_calc_validate_prices,
+)
 
 # Завантажуємо змінні середовища
 load_dotenv("config.env")
@@ -49,6 +55,7 @@ app = Flask(__name__)
 app.config['ENV'] = FLASK_ENV
 app.config['DEBUG'] = FLASK_DEBUG and FLASK_ENV == 'development'
 app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key-change-in-production')
+app.config['APP_VERSION'] = APP_VERSION
 
 # CSRF захист
 csrf = CSRFProtect(app)
@@ -146,7 +153,7 @@ def nl2br_filter(text):
 
 @app.context_processor
 def inject_knowledge_base_access():
-    """Додає інформацію про доступ до бази знань в контекст шаблонів"""
+    """Додає інформацію про доступ до бази знань та версію застосунку в контекст шаблонів"""
     has_kb_access = False
     if current_user.is_authenticated:
         if current_user.is_admin:
@@ -156,7 +163,7 @@ def inject_knowledge_base_access():
                 user = session.query(User).filter(User.user_id == current_user.user_id).first()
                 if user and user.notifications_enabled:
                     has_kb_access = True
-    return dict(has_kb_access=has_kb_access)
+    return dict(has_kb_access=has_kb_access, app_version=APP_VERSION)
 
 
 @app.template_filter('from_json')
@@ -302,110 +309,14 @@ def admin_required(f):
     return decorated_function
 
 
-def _quote_calc_default_prices() -> dict:
-    """Дефолтні ціни (грн) для калькулятора КП."""
-    return {
-        # Блок 1: абонплата (щомісячно)
-        "pc_remote": 300,
-        "pc_visit": 500,
-        "srv_windows": 1500,
-        "srv_linux": 2500,
-        "user_monthly": 300,
-
-        # Блок 1: разові послуги
-        "pc_build": 1500,
-        "diagnostics": 1000,
-        "win_install": 1000,
-        "pro_software_1c": 600,
-        "hour_work": 1000,
-
-        # Блок 1: мережа/монтаж
-        "network_setup": 600,
-        "sks_meter": 16,
-        "sec_audit_min": 5000,
-
-        # Блок 2: міграція (діапазони та дефолти)
-        "cloud_migration_base_min": 8000,
-        "cloud_migration_base_default": 12000,
-        "cloud_migration_base_max": 15000,
-
-        "cloud_migration_b2b_min": 15000,
-        "cloud_migration_b2b_default": 25000,
-        "cloud_migration_b2b_max": 35000,
-
-        "cloud_migration_enterprise_min": 40000,
-    }
-
-
 def _quote_calc_load_prices() -> dict:
-    """Завантажити прайс з БД (BotConfig) з fallback на дефолти."""
-    key = "quote_calc_prices_v1"
-    defaults = _quote_calc_default_prices()
-    raw = get_bot_config(key)
-    if not raw:
-        return defaults
-    try:
-        data = json.loads(raw)
-        if not isinstance(data, dict):
-            return defaults
-        # Підмішуємо дефолти на випадок відсутніх ключів
-        merged = dict(defaults)
-        merged.update(data)
-        return merged
-    except Exception:
-        return defaults
+    """Backward-compat: делегуємо в модуль `web_admin.quote_calc`."""
+    return quote_calc_load_prices()
 
 
 def _quote_calc_validate_prices(prices: dict) -> Tuple[bool, str, dict]:
-    """
-    Валідувати та нормалізувати прайс калькулятора.
-
-    Returns:
-        (ok, error_message, normalized_prices)
-    """
-    defaults = _quote_calc_default_prices()
-    if not isinstance(prices, dict):
-        return False, "Невірний формат даних (очікується JSON об'єкт).", defaults
-
-    normalized: dict = {}
-    for key, default_value in defaults.items():
-        value = prices.get(key, default_value)
-        try:
-            n = float(value)
-        except (TypeError, ValueError):
-            n = float(default_value)
-
-        if n < 0:
-            return False, f"Ціна '{key}' не може бути від'ємною.", defaults
-
-        # Переважно ціни цілими, але залишимо можливість дробу (наприклад, 16.5 грн/м)
-        normalized[key] = int(n) if float(n).is_integer() else n
-
-    # Мінімальні пороги
-    if float(normalized.get("sec_audit_min", 0)) < 5000:
-        return False, "Аудит ІБ не може бути менше 5000 грн.", defaults
-    if float(normalized.get("cloud_migration_enterprise_min", 0)) < 40000:
-        return False, "Enterprise міграція не може бути менше 40000 грн.", defaults
-
-    # Діапазони міграції: min <= default <= max
-    def _check_range(prefix: str) -> Optional[str]:
-        min_v = float(normalized.get(f"{prefix}_min", 0))
-        def_v = float(normalized.get(f"{prefix}_default", 0))
-        max_v = float(normalized.get(f"{prefix}_max", 0))
-        if min_v > max_v:
-            return f"Діапазон '{prefix}': мінімум не може бути більшим за максимум."
-        if not (min_v <= def_v <= max_v):
-            return f"Діапазон '{prefix}': дефолт має бути в межах мін/макс."
-        return None
-
-    err = _check_range("cloud_migration_base")
-    if err:
-        return False, err, defaults
-    err = _check_range("cloud_migration_b2b")
-    if err:
-        return False, err, defaults
-
-    return True, "", normalized
+    """Backward-compat: делегуємо в модуль `web_admin.quote_calc`."""
+    return quote_calc_validate_prices(prices)
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -2714,7 +2625,7 @@ def reports():
 @admin_required
 def quote_calculator():
     """Калькулятор комерційних пропозицій."""
-    prices = _quote_calc_load_prices()
+    prices = quote_calc_load_prices()
     return render_template('quote_calculator.html', prices=prices)
 
 
@@ -2722,7 +2633,7 @@ def quote_calculator():
 @admin_required
 def api_quote_calculator_prices_get():
     """Отримати прайс калькулятора КП."""
-    return jsonify({"prices": _quote_calc_load_prices()})
+    return jsonify({"prices": quote_calc_load_prices()})
 
 
 @app.post('/api/quote-calculator/prices')
@@ -2730,12 +2641,31 @@ def api_quote_calculator_prices_get():
 def api_quote_calculator_prices_post():
     """Оновити прайс калькулятора КП."""
     payload = request.get_json(silent=True) or {}
-    ok, error_message, normalized = _quote_calc_validate_prices(payload.get("prices", payload))
+    ok, error_message, normalized = quote_calc_save_prices(payload.get("prices", payload))
     if not ok:
         return jsonify({"ok": False, "error": error_message}), 400
-
-    set_bot_config("quote_calc_prices_v1", json.dumps(normalized, ensure_ascii=False))
     return jsonify({"ok": True, "prices": normalized})
+
+
+@app.post('/api/quote-calculator/receipt-pdf')
+@admin_required
+def api_quote_calculator_receipt_pdf():
+    """Згенерувати PDF-чек з розрахунку калькулятора."""
+    payload = request.get_json(silent=True) or {}
+    title = str(payload.get("title") or "Чек (Калькулятор)").strip()[:80]
+    text = str(payload.get("text") or "").strip()
+    if not text:
+        return jsonify({"ok": False, "error": "Порожній розрахунок."}), 400
+
+    # Ліміт на розмір, щоб не перевантажувати генерацію PDF.
+    if len(text) > 20000:
+        return jsonify({"ok": False, "error": "Занадто великий текст розрахунку."}), 400
+
+    lines = text.splitlines()
+    pdf_manager = get_pdf_report_manager()
+    pdf_buffer = pdf_manager.generate_quote_receipt_pdf(title=title, lines=lines)
+    filename = f"quote_receipt_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
+    return send_file(pdf_buffer, mimetype="application/pdf", download_name=filename)
 
 
 @app.route('/tickets/create', methods=['GET', 'POST'])
@@ -3013,15 +2943,23 @@ def favicon():
 # PWA маршрути
 @app.route('/manifest.json')
 def manifest():
-    """PWA Web App Manifest"""
-    return send_file('static/manifest.json', mimetype='application/manifest+json')
+    """PWA Web App Manifest з полем version (метадані для діагностики та оновлень)."""
+    manifest_path = os.path.join(app.root_path, 'static', 'manifest.json')
+    with open(manifest_path, encoding='utf-8') as f:
+        data = json.load(f)
+    data['version'] = APP_VERSION
+    body = json.dumps(data, ensure_ascii=False, indent=2)
+    return Response(body, mimetype='application/manifest+json')
 
 
 @app.route('/sw.js')
 @csrf.exempt
 def service_worker():
-    """Service Worker для PWA"""
-    response = send_file('static/js/sw.js', mimetype='application/javascript')
+    """Service Worker для PWA (підстановка версії для імені кешу та оновлень)."""
+    sw_path = os.path.join(app.root_path, 'static', 'js', 'sw.js')
+    with open(sw_path, encoding='utf-8') as f:
+        content = f.read().replace('__APP_RELEASE__', APP_VERSION)
+    response = Response(content, mimetype='application/javascript')
     # Дозволяємо service worker працювати на всіх сторінках
     response.headers['Service-Worker-Allowed'] = '/'
     # Відключаємо кешування для service worker (важливо для оновлень)

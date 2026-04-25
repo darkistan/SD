@@ -424,7 +424,9 @@
   function createVpsItem(initial = null) {
     const host = document.getElementById("qc-vps-items");
     const tpl = document.getElementById("qc-vps-item-template");
-    if (!host || !tpl) return null;
+    if (!host || !tpl) {
+      return null;
+    }
     const fragment = tpl.content.cloneNode(true);
     const card = fragment.querySelector(".card");
     if (!card) return null;
@@ -469,7 +471,9 @@
   function createVdsItem(initial = null) {
     const host = document.getElementById("qc-vds-items");
     const tpl = document.getElementById("qc-vds-item-template");
-    if (!host || !tpl) return null;
+    if (!host || !tpl) {
+      return null;
+    }
     const fragment = tpl.content.cloneNode(true);
     const card = fragment.querySelector(".card");
     if (!card) return null;

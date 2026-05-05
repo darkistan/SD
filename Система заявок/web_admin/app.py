@@ -1974,6 +1974,7 @@ def get_executor_candidates():
 
 @app.route('/api/admin/new_tickets_count')
 @admin_required
+@limiter.limit("1200 per hour")
 def api_new_tickets_count():
     """API: кількість заявок зі статусом NEW (для дзвоника в шапці)."""
     try:

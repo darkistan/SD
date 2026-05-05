@@ -43,7 +43,8 @@
     const icon = document.getElementById('new-tickets-bell-icon');
     if (!badge || !icon) return;
 
-    const POLL_MS = 7000;
+    // 15 секунд: не “з’їдаємо” глобальний rate limit
+    const POLL_MS = 15000;
 
     function applyCount(count) {
         const n = Number.isFinite(count) ? Math.max(0, Math.trunc(count)) : 0;

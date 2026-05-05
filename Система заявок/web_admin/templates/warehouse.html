@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+
+{% block title %}Закупівлі - Система заявок{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-12">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+      <h1 class="mb-0"><i class="bi bi-cart-check"></i> Закупівлі</h1>
+      <div class="d-flex gap-2">
+        <a class="btn btn-outline-primary" href="{{ url_for('warehouse_purchase_lists') }}">
+          <i class="bi bi-list-ul"></i> Списки закупівлі
+        </a>
+        <a class="btn btn-outline-primary" href="{{ url_for('warehouse_suppliers') }}">
+          <i class="bi bi-truck"></i> Постачальники
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row mb-3">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0">Додати товар</h5>
+      </div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('warehouse_add_item') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+          <input type="hidden" name="return_page" value="{{ page }}"/>
+          <div class="row g-2">
+            <div class="col-12 col-md-3">
+              <label class="form-label">Назва <span class="text-danger">*</span></label>
+              <input type="text" name="name" class="form-control" required maxlength="300" placeholder="Напр. Папір A4">
+            </div>
+            <div class="col-12 col-md-3">
+              <label class="form-label">Опис</label>
+              <input type="text" name="description" class="form-control" maxlength="2000" placeholder="Опціонально">
+            </div>
+            <div class="col-12 col-md-2">
+              <label class="form-label">Постачальник <span class="text-danger">*</span></label>
+              <select name="supplier_id" class="form-select" required>
+                <option value="">— оберіть —</option>
+                {% for s in suppliers %}
+                <option value="{{ s.id }}">{{ s.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12 col-md-2">
+              <label class="form-label">Посилання</label>
+              <input type="url" name="purchase_url" class="form-control" maxlength="500" placeholder="https://...">
+            </div>
+            <div class="col-12">
+              <button type="submit" class="btn btn-primary">
+                <i class="bi bi-plus"></i> Додати
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <h5 class="mb-0">Товари ({{ items|length }})</h5>
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+          <input type="text" id="warehouseSearch" class="form-control form-control-sm" style="max-width: 320px;" placeholder="Пошук: назва/опис/постачальник">
+          <div class="small text-muted">Додавання в списки закупівлі — через кнопки в рядку</div>
+        </div>
+      </div>
+      <div class="card-body">
+        {% if items %}
+        <div class="table-responsive">
+          <table class="table table-striped align-middle">
+            <thead>
+              <tr>
+                <th style="width: 80px;">ID</th>
+                <th>Товар</th>
+                <th style="width: 220px;">Постачальник</th>
+                <th style="width: 180px;">Посилання</th>
+                <th style="width: 160px;">Дії</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for it in items %}
+              <tr>
+                <td>#{{ it.id }}</td>
+                <td>
+                  <strong>{{ it.name }}</strong>
+                  {% if it.description %}
+                  <div class="text-muted small">{{ it.description[:120] }}{% if it.description|length > 120 %}...{% endif %}</div>
+                  {% endif %}
+                </td>
+                <td>
+                  <div class="d-flex flex-column">
+                    <span>{{ it.supplier_name }}</span>
+                  </div>
+                </td>
+                <td>
+                  {% if it.purchase_url %}
+                  <a class="btn btn-sm btn-outline-primary" href="{{ it.purchase_url }}" target="_blank" rel="noopener noreferrer" title="Відкрити сайт">
+                    <i class="bi bi-box-arrow-up-right"></i>
+                  </a>
+                  {% else %}
+                  <span class="text-muted small">—</span>
+                  {% endif %}
+                </td>
+                <td>
+                  <div class="btn-group btn-group-sm" role="group">
+                    <button class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#editStockItemModal{{ it.id }}" title="Редагувати">
+                      <i class="bi bi-pencil"></i>
+                    </button>
+                    <form method="POST" action="{{ url_for('warehouse_delete_item', item_id=it.id) }}" onsubmit="return confirm('Видалити товар «{{ it.name }}»?');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                      <input type="hidden" name="return_page" value="{{ page }}"/>
+                      <button type="submit" class="btn btn-outline-danger" title="Видалити">
+                        <i class="bi bi-trash"></i>
+                      </button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% if total_pages > 1 %}
+          <nav aria-label="Пагінація товарів" class="mt-3">
+            <ul class="pagination justify-content-center mb-0">
+              {% if page > 1 %}
+              <li class="page-item">
+                <a class="page-link" href="{{ url_for('warehouse', page=page-1) }}">Попередня</a>
+              </li>
+              {% else %}
+              <li class="page-item disabled">
+                <span class="page-link">Попередня</span>
+              </li>
+              {% endif %}
+
+              {% for p in range(1, total_pages + 1) %}
+                {% if p == page %}
+                <li class="page-item active">
+                  <span class="page-link">{{ p }}</span>
+                </li>
+                {% elif p <= 2 or p >= total_pages - 1 or (p >= page - 1 and p <= page + 1) %}
+                <li class="page-item">
+                  <a class="page-link" href="{{ url_for('warehouse', page=p) }}">{{ p }}</a>
+                </li>
+                {% elif p == page - 2 or p == page + 2 %}
+                <li class="page-item disabled">
+                  <span class="page-link">...</span>
+                </li>
+                {% endif %}
+              {% endfor %}
+
+              {% if page < total_pages %}
+              <li class="page-item">
+                <a class="page-link" href="{{ url_for('warehouse', page=page+1) }}">Наступна</a>
+              </li>
+              {% else %}
+              <li class="page-item disabled">
+                <span class="page-link">Наступна</span>
+              </li>
+              {% endif %}
+            </ul>
+          </nav>
+          <div class="text-center text-muted small mt-2">
+            Показано {{ (page - 1) * per_page + 1 }}-{{ end_index }} з {{ total_items }} товарів
+          </div>
+          {% endif %}
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">Товарів поки немає.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% for it in items %}
+<div class="modal fade" id="editStockItemModal{{ it.id }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Редагувати товар #{{ it.id }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрити"></button>
+      </div>
+      <form method="POST" action="{{ url_for('warehouse_edit_item', item_id=it.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <input type="hidden" name="return_page" value="{{ page }}"/>
+        <div class="modal-body">
+          <div class="row g-2">
+            <div class="col-12 col-md-4">
+              <label class="form-label">Назва <span class="text-danger">*</span></label>
+              <input type="text" name="name" class="form-control" required maxlength="300" value="{{ it.name }}">
+            </div>
+            <div class="col-12 col-md-4">
+              <label class="form-label">Опис</label>
+              <input type="text" name="description" class="form-control" maxlength="2000" value="{{ it.description or '' }}">
+            </div>
+            <div class="col-12 col-md-4">
+              <label class="form-label">Постачальник <span class="text-danger">*</span></label>
+              <select name="supplier_id" class="form-select" required>
+                {% for s in suppliers %}
+                <option value="{{ s.id }}" {% if s.id == it.supplier_id %}selected{% endif %}>{{ s.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Посилання на сайт</label>
+              <input type="url" name="purchase_url" class="form-control" maxlength="500" value="{{ it.purchase_url or '' }}" placeholder="https://...">
+              <div class="form-text">Дозволено лише `http(s)://`.</div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Скасувати</button>
+          <button type="submit" class="btn btn-primary">Зберегти</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const input = document.getElementById('warehouseSearch');
+  if (!input) return;
+  const table = document.querySelector('table');
+  if (!table) return;
+  const rows = Array.from(table.querySelectorAll('tbody tr'));
+
+  function applyFilter() {
+    const q = (input.value || '').trim().toLowerCase();
+    if (!q) {
+      rows.forEach(r => r.classList.remove('d-none'));
+      return;
+    }
+    rows.forEach(r => {
+      const text = (r.innerText || '').toLowerCase();
+      if (text.includes(q)) r.classList.remove('d-none');
+      else r.classList.add('d-none');
+    });
+  }
+
+  input.addEventListener('input', applyFilter);
+});
+</script>
+{% endblock %}
+

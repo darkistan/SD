@@ -493,3 +493,89 @@ class KnowledgeBaseFavorite(Base):
     def __repr__(self):
         return f"<KnowledgeBaseFavorite(id={self.id}, user_id={self.user_id}, note_id={self.note_id})>"
 
+
+class PurchaseSupplier(Base):
+    """Постачальник (контрагент) для закупівель"""
+
+    __tablename__ = "purchase_suppliers"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(200), unique=True, nullable=False, index=True)
+    website_url = Column(String(500), nullable=True)
+    has_contract = Column(Boolean, default=False, nullable=False, index=True)
+    contact_info = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
+
+    items = relationship("StockItem", back_populates="supplier", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<PurchaseSupplier(id={self.id}, name='{self.name}', has_contract={self.has_contract})>"
+
+
+class StockItem(Base):
+    """Товар на складі"""
+
+    __tablename__ = "stock_items"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(300), nullable=False, index=True)
+    description = Column(Text, nullable=True)
+    quantity = Column(Integer, default=0, nullable=False, index=True)
+    purchase_url = Column(String(500), nullable=True)
+    supplier_id = Column(Integer, ForeignKey("purchase_suppliers.id", ondelete="RESTRICT"), nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.now, nullable=False, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False, index=True)
+
+    supplier = relationship("PurchaseSupplier", back_populates="items")
+    purchase_lists = relationship("PurchaseListItem", back_populates="stock_item", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<StockItem(id={self.id}, name='{self.name}', quantity={self.quantity})>"
+
+
+class PurchaseList(Base):
+    """Список закупівлі (окремий план)"""
+
+    __tablename__ = "purchase_lists"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="RESTRICT"), nullable=True, index=True)
+    title = Column(String(200), unique=True, nullable=False, index=True)
+    description = Column(Text, nullable=True)
+    status = Column(String(30), default="FORMING", nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.now, nullable=False, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False, index=True)
+    # Момент останнього переведення списку в статус DONE (для історії)
+    done_at = Column(DateTime, nullable=True, index=True)
+
+    company = relationship("Company", backref="purchase_lists")
+    items = relationship("PurchaseListItem", back_populates="purchase_list", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<PurchaseList(id={self.id}, title='{self.title}', status='{self.status}')>"
+
+
+class PurchaseListItem(Base):
+    """Зв'язок товару зі списком закупівлі (M2M)"""
+
+    __tablename__ = "purchase_list_items"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    purchase_list_id = Column(Integer, ForeignKey("purchase_lists.id", ondelete="CASCADE"), nullable=False, index=True)
+    stock_item_id = Column(Integer, ForeignKey("stock_items.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.now, nullable=False, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False, index=True)
+    quantity = Column(Integer, default=1, nullable=False, index=True)
+    unit_price_cents = Column(Integer, default=0, nullable=False, index=True)
+
+    purchase_list = relationship("PurchaseList", back_populates="items")
+    stock_item = relationship("StockItem", back_populates="purchase_lists")
+
+    __table_args__ = (
+        UniqueConstraint("purchase_list_id", "stock_item_id", name="uq_purchase_list_item"),
+    )
+
+    def __repr__(self):
+        return f"<PurchaseListItem(list_id={self.purchase_list_id}, stock_item_id={self.stock_item_id})>"
+

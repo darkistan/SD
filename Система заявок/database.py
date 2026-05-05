@@ -120,6 +120,18 @@ class DatabaseManager:
             # Міграції для бази знань
             self.migrate_add_commands_to_knowledge_base_notes()
             self.migrate_create_knowledge_base_favorites_table()
+
+            # Модуль «Склад та Закупівлі»
+            self.migrate_create_purchase_suppliers_table()
+            self.migrate_create_stock_items_table()
+            self.migrate_create_purchase_lists_table()
+            self.migrate_create_purchase_list_items_table()
+            self.migrate_add_status_to_purchase_lists_table()
+            self.migrate_add_company_id_to_purchase_lists_table()
+            self.migrate_add_quantity_to_purchase_list_items_table()
+            self.migrate_add_updated_at_to_purchase_list_items_table()
+            self.migrate_add_unit_price_cents_to_purchase_list_items_table()
+            self.migrate_add_done_at_to_purchase_lists_table()
             
             # Створюємо адміністратора за замовчуванням, якщо його немає
             self.create_default_admin()
@@ -134,6 +146,158 @@ class DatabaseManager:
         except Exception as e:
             logger.log_error(f"Помилка створення таблиць БД: {e}")
             return False
+
+    def migrate_create_purchase_suppliers_table(self):
+        """Міграція: таблиця purchase_suppliers (створюється через Base.metadata.create_all)"""
+        try:
+            inspector = inspect(self.engine)
+            if "purchase_suppliers" in inspector.get_table_names():
+                return
+            logger.log_info("Таблиця purchase_suppliers буде створена через Base.metadata.create_all()")
+        except Exception as e:
+            logger.log_error(f"Помилка міграції створення purchase_suppliers: {e}")
+
+    def migrate_create_stock_items_table(self):
+        """Міграція: таблиця stock_items (створюється через Base.metadata.create_all)"""
+        try:
+            inspector = inspect(self.engine)
+            if "stock_items" in inspector.get_table_names():
+                return
+            logger.log_info("Таблиця stock_items буде створена через Base.metadata.create_all()")
+        except Exception as e:
+            logger.log_error(f"Помилка міграції створення stock_items: {e}")
+
+    def migrate_create_purchase_lists_table(self):
+        """Міграція: таблиця purchase_lists (створюється через Base.metadata.create_all)"""
+        try:
+            inspector = inspect(self.engine)
+            if "purchase_lists" in inspector.get_table_names():
+                return
+            logger.log_info("Таблиця purchase_lists буде створена через Base.metadata.create_all()")
+        except Exception as e:
+            logger.log_error(f"Помилка міграції створення purchase_lists: {e}")
+
+    def migrate_create_purchase_list_items_table(self):
+        """Міграція: таблиця purchase_list_items (створюється через Base.metadata.create_all)"""
+        try:
+            inspector = inspect(self.engine)
+            if "purchase_list_items" in inspector.get_table_names():
+                return
+            logger.log_info("Таблиця purchase_list_items буде створена через Base.metadata.create_all()")
+        except Exception as e:
+            logger.log_error(f"Помилка міграції створення purchase_list_items: {e}")
+
+    def migrate_add_status_to_purchase_lists_table(self):
+        """Міграція: додавання колонки status до purchase_lists (fallback)"""
+        try:
+            with self.engine.begin() as conn:
+                inspector = inspect(self.engine)
+                if "purchase_lists" not in inspector.get_table_names():
+                    return
+                columns = [col["name"] for col in inspector.get_columns("purchase_lists")]
+                if "status" not in columns:
+                    conn.execute(text("ALTER TABLE purchase_lists ADD COLUMN status VARCHAR(30) NOT NULL DEFAULT 'FORMING'"))
+                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_purchase_lists_status ON purchase_lists(status)"))
+                    logger.log_info("Додано колонку status до purchase_lists")
+        except Exception as e:
+            logger.log_error(f"Помилка міграції додавання status до purchase_lists: {e}")
+
+    def migrate_add_company_id_to_purchase_lists_table(self):
+        """Міграція: додавання колонки company_id до purchase_lists (fallback)"""
+        try:
+            with self.engine.begin() as conn:
+                inspector = inspect(self.engine)
+                if "purchase_lists" not in inspector.get_table_names():
+                    return
+                columns = [col["name"] for col in inspector.get_columns("purchase_lists")]
+                if "company_id" not in columns:
+                    conn.execute(text("ALTER TABLE purchase_lists ADD COLUMN company_id INTEGER"))
+                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_purchase_lists_company_id ON purchase_lists(company_id)"))
+                    logger.log_info("Додано колонку company_id до purchase_lists")
+        except Exception as e:
+            logger.log_error(f"Помилка міграції додавання company_id до purchase_lists: {e}")
+
+    def migrate_add_quantity_to_purchase_list_items_table(self):
+        """Міграція: додавання колонки quantity до purchase_list_items (fallback)"""
+        try:
+            with self.engine.begin() as conn:
+                inspector = inspect(self.engine)
+                if "purchase_list_items" not in inspector.get_table_names():
+                    return
+                columns = [col["name"] for col in inspector.get_columns("purchase_list_items")]
+                if "quantity" not in columns:
+                    conn.execute(text("ALTER TABLE purchase_list_items ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1"))
+                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_purchase_list_items_quantity ON purchase_list_items(quantity)"))
+                    logger.log_info("Додано колонку quantity до purchase_list_items")
+        except Exception as e:
+            logger.log_error(f"Помилка міграції додавання quantity до purchase_list_items: {e}")
+
+    def migrate_add_updated_at_to_purchase_list_items_table(self):
+        """Міграція: додавання колонки updated_at до purchase_list_items (fallback)"""
+        try:
+            with self.engine.begin() as conn:
+                inspector = inspect(self.engine)
+                if "purchase_list_items" not in inspector.get_table_names():
+                    return
+                columns = [col["name"] for col in inspector.get_columns("purchase_list_items")]
+                if "updated_at" not in columns:
+                    conn.execute(text("ALTER TABLE purchase_list_items ADD COLUMN updated_at DATETIME"))
+                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_purchase_list_items_updated_at ON purchase_list_items(updated_at)"))
+                    logger.log_info("Додано колонку updated_at до purchase_list_items")
+        except Exception as e:
+            logger.log_error(f"Помилка міграції додавання updated_at до purchase_list_items: {e}")
+
+    def migrate_add_unit_price_cents_to_purchase_list_items_table(self):
+        """Міграція: додавання колонки unit_price_cents до purchase_list_items (fallback)"""
+        try:
+            with self.engine.begin() as conn:
+                inspector = inspect(self.engine)
+                if "purchase_list_items" not in inspector.get_table_names():
+                    return
+                columns = [col["name"] for col in inspector.get_columns("purchase_list_items")]
+                if "unit_price_cents" not in columns:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE purchase_list_items "
+                            "ADD COLUMN unit_price_cents INTEGER NOT NULL DEFAULT 0"
+                        )
+                    )
+                    conn.execute(
+                        text(
+                            "CREATE INDEX IF NOT EXISTS ix_purchase_list_items_unit_price_cents "
+                            "ON purchase_list_items(unit_price_cents)"
+                        )
+                    )
+                    logger.log_info("Додано колонку unit_price_cents до purchase_list_items")
+        except Exception as e:
+            logger.log_error(f"Помилка міграції додавання unit_price_cents до purchase_list_items: {e}")
+
+    def migrate_add_done_at_to_purchase_lists_table(self):
+        """Міграція: дата виконання списку (DONE) для історії закупівель."""
+        try:
+            with self.engine.begin() as conn:
+                inspector = inspect(self.engine)
+                if "purchase_lists" not in inspector.get_table_names():
+                    return
+                columns = [col["name"] for col in inspector.get_columns("purchase_lists")]
+                if "done_at" not in columns:
+                    conn.execute(text("ALTER TABLE purchase_lists ADD COLUMN done_at DATETIME"))
+                    conn.execute(
+                        text(
+                            "CREATE INDEX IF NOT EXISTS ix_purchase_lists_done_at "
+                            "ON purchase_lists(done_at)"
+                        )
+                    )
+                    logger.log_info("Додано колонку done_at до purchase_lists")
+                # Оцінка для вже існуючих DONE без дати — беремо updated_at
+                conn.execute(
+                    text(
+                        "UPDATE purchase_lists SET done_at = updated_at "
+                        "WHERE status = 'DONE' AND done_at IS NULL"
+                    )
+                )
+        except Exception as e:
+            logger.log_error(f"Помилка міграції додавання done_at до purchase_lists: {e}")
     
     def create_default_admin(self):
         """Створення адміністратора за замовчуванням"""

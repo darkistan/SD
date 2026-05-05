@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+
+{% block title %}Постачальники - Система заявок{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-12">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+      <h1 class="mb-0"><i class="bi bi-truck"></i> Постачальники</h1>
+      <a class="btn btn-outline-primary" href="{{ url_for('warehouse') }}">
+        <i class="bi bi-arrow-left"></i> До складу
+      </a>
+    </div>
+  </div>
+</div>
+
+<div class="row mb-3">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0">Додати постачальника</h5>
+      </div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('warehouse_add_supplier') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+          <input type="hidden" name="return_page" value="{{ page }}"/>
+          <div class="row g-2">
+            <div class="col-12 col-md-4">
+              <label class="form-label">Назва <span class="text-danger">*</span></label>
+              <input type="text" name="name" class="form-control" required maxlength="200" placeholder="Напр. Rozetka / OfficePartner">
+            </div>
+            <div class="col-12 col-md-4">
+              <label class="form-label">Сайт</label>
+              <input type="url" name="website_url" class="form-control" maxlength="500" placeholder="https://...">
+            </div>
+            <div class="col-12 col-md-2 d-flex align-items-end">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="has_contract" id="has_contract_new">
+                <label class="form-check-label" for="has_contract_new">Є договір</label>
+              </div>
+            </div>
+            <div class="col-12 col-md-2 d-flex align-items-end">
+              <button type="submit" class="btn btn-primary w-100">
+                <i class="bi bi-plus"></i> Додати
+              </button>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Контакти/нотатки</label>
+              <input type="text" name="contact_info" class="form-control" maxlength="2000" placeholder="Опціонально">
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0">Список постачальників ({{ suppliers|length }})</h5>
+      </div>
+      <div class="card-body">
+        {% if suppliers %}
+        <div class="table-responsive">
+          <table class="table table-striped align-middle">
+            <thead>
+              <tr>
+                <th style="width: 80px;">ID</th>
+                <th>Назва</th>
+                <th>Сайт</th>
+                <th style="width: 140px;">Договір</th>
+                <th style="width: 160px;">Дії</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for s in suppliers %}
+              <tr>
+                <td>#{{ s.id }}</td>
+                <td>
+                  <strong>{{ s.name }}</strong>
+                  {% if s.contact_info %}
+                  <div class="text-muted small">{{ s.contact_info[:120] }}{% if s.contact_info|length > 120 %}...{% endif %}</div>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if s.website_url %}
+                  <a href="{{ s.website_url }}" target="_blank" rel="noopener noreferrer">{{ s.website_url }}</a>
+                  {% else %}
+                  <span class="text-muted">—</span>
+                  {% endif %}
+                </td>
+                <td>
+                  <form method="POST" action="{{ url_for('warehouse_toggle_supplier_contract', supplier_id=s.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="return_page" value="{{ page }}"/>
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" name="has_contract" id="has_contract_{{ s.id }}" {% if s.has_contract %}checked{% endif %} onchange="this.form.submit()">
+                      <label class="form-check-label" for="has_contract_{{ s.id }}">
+                        {% if s.has_contract %}є{% else %}нема{% endif %}
+                      </label>
+                    </div>
+                  </form>
+                </td>
+                <td>
+                  <div class="btn-group btn-group-sm" role="group">
+                    <button class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#editSupplierModal{{ s.id }}">
+                      <i class="bi bi-pencil"></i>
+                    </button>
+                    <form method="POST" action="{{ url_for('warehouse_delete_supplier', supplier_id=s.id) }}" onsubmit="return confirm('Видалити постачальника «{{ s.name }}»?');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                      <input type="hidden" name="return_page" value="{{ page }}"/>
+                      <button type="submit" class="btn btn-outline-danger" title="Видалити">
+                        <i class="bi bi-trash"></i>
+                      </button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% if total_pages > 1 %}
+          <nav aria-label="Пагінація постачальників" class="mt-3">
+            <ul class="pagination justify-content-center mb-0">
+              {% if page > 1 %}
+              <li class="page-item">
+                <a class="page-link" href="{{ url_for('warehouse_suppliers', page=page-1) }}">Попередня</a>
+              </li>
+              {% else %}
+              <li class="page-item disabled">
+                <span class="page-link">Попередня</span>
+              </li>
+              {% endif %}
+
+              {% for p in range(1, total_pages + 1) %}
+                {% if p == page %}
+                <li class="page-item active">
+                  <span class="page-link">{{ p }}</span>
+                </li>
+                {% elif p <= 2 or p >= total_pages - 1 or (p >= page - 1 and p <= page + 1) %}
+                <li class="page-item">
+                  <a class="page-link" href="{{ url_for('warehouse_suppliers', page=p) }}">{{ p }}</a>
+                </li>
+                {% elif p == page - 2 or p == page + 2 %}
+                <li class="page-item disabled">
+                  <span class="page-link">...</span>
+                </li>
+                {% endif %}
+              {% endfor %}
+
+              {% if page < total_pages %}
+              <li class="page-item">
+                <a class="page-link" href="{{ url_for('warehouse_suppliers', page=page+1) }}">Наступна</a>
+              </li>
+              {% else %}
+              <li class="page-item disabled">
+                <span class="page-link">Наступна</span>
+              </li>
+              {% endif %}
+            </ul>
+          </nav>
+          <div class="text-center text-muted small mt-2">
+            Показано {{ (page - 1) * per_page + 1 }}-{{ end_index }} з {{ total_suppliers }} постачальників
+          </div>
+          {% endif %}
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">Постачальників поки немає.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% for s in suppliers %}
+<div class="modal fade" id="editSupplierModal{{ s.id }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Редагувати постачальника</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрити"></button>
+      </div>
+      <form method="POST" action="{{ url_for('warehouse_edit_supplier', supplier_id=s.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <input type="hidden" name="return_page" value="{{ page }}"/>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Назва <span class="text-danger">*</span></label>
+            <input type="text" name="name" class="form-control" required maxlength="200" value="{{ s.name }}">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Сайт</label>
+            <input type="url" name="website_url" class="form-control" maxlength="500" value="{{ s.website_url or '' }}">
+          </div>
+          <div class="mb-3">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="has_contract" id="has_contract_modal_{{ s.id }}" {% if s.has_contract %}checked{% endif %}>
+              <label class="form-check-label" for="has_contract_modal_{{ s.id }}">Є договір</label>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Контакти/нотатки</label>
+            <input type="text" name="contact_info" class="form-control" maxlength="2000" value="{{ s.contact_info or '' }}">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Скасувати</button>
+          <button type="submit" class="btn btn-primary">Зберегти</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+{% endblock %}
+

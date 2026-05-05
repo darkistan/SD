@@ -1,0 +1,335 @@
+{% extends "base.html" %}
+
+{% block title %}Списки закупівлі - Система заявок{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-12">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+      <h1 class="mb-0"><i class="bi bi-list-ul"></i> Списки закупівлі</h1>
+      <a class="btn btn-outline-primary" href="{{ url_for('warehouse') }}">
+        <i class="bi bi-arrow-left"></i> До складу
+      </a>
+    </div>
+  </div>
+</div>
+
+<div class="row mb-3">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0">Створити список</h5>
+      </div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('warehouse_add_purchase_list') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+          <input type="hidden" name="return_page" value="{{ page }}"/>
+          <input type="hidden" name="return_page_done" value="{{ page_done }}"/>
+          <div class="row g-2">
+            <div class="col-12 col-md-3">
+              <label class="form-label">Компанія <span class="text-danger">*</span></label>
+              <select name="company_id" class="form-select" required>
+                <option value="">— оберіть —</option>
+                {% for c in companies %}
+                <option value="{{ c.id }}">{{ c.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12 col-md-4">
+              <label class="form-label">Назва <span class="text-danger">*</span></label>
+              <input type="text" name="title" class="form-control" required maxlength="200" placeholder="Напр. Офіс (травень)">
+            </div>
+            <div class="col-12 col-md-4">
+              <label class="form-label">Опис</label>
+              <input type="text" name="description" class="form-control" maxlength="4000" placeholder="Опціонально">
+            </div>
+            <div class="col-12 col-md-1 d-flex align-items-end">
+              <button type="submit" class="btn btn-primary w-100">
+                <i class="bi bi-plus"></i> Створити
+              </button>
+            </div>
+          </div>
+          <div class="small text-muted mt-2">Новий список створюється зі статусом «Формування».</div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0">Списки ({{ purchase_lists|length }})</h5>
+      </div>
+      <div class="card-body">
+        {% if purchase_lists %}
+        <div class="table-responsive">
+          <table class="table table-striped align-middle">
+            <thead>
+              <tr>
+                <th style="width: 80px;">ID</th>
+                <th style="width: 220px;">Компанія</th>
+                <th>Список</th>
+                <th style="width: 220px;">Статус</th>
+                <th style="width: 120px;">Позицій</th>
+                <th style="width: 160px;">Дії</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for pl in purchase_lists %}
+              <tr>
+                <td>#{{ pl.id }}</td>
+                <td>{{ pl.company_name or '—' }}</td>
+                <td>
+                  <strong>{{ pl.title }}</strong>
+                  {% if pl.description %}
+                  <div class="text-muted small">{{ pl.description[:120] }}{% if pl.description|length > 120 %}...{% endif %}</div>
+                  {% endif %}
+                </td>
+                <td>
+                  <form method="POST" action="{{ url_for('warehouse_set_purchase_list_status', list_id=pl.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="return_page" value="{{ page }}"/>
+                    <input type="hidden" name="return_page_done" value="{{ page_done }}"/>
+                    <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
+                      {% for code, label in status_labels.items() %}
+                      <option value="{{ code }}" {% if pl.status == code %}selected{% endif %}>{{ label }}</option>
+                      {% endfor %}
+                    </select>
+                  </form>
+                  <div class="mt-1">
+                    <span class="badge {{ pl.status_badge }}">{{ pl.status_label }}</span>
+                  </div>
+                </td>
+                <td><span class="badge bg-secondary">{{ pl.items_count }}</span></td>
+                <td>
+                  <div class="btn-group btn-group-sm" role="group">
+                    <a class="btn btn-outline-primary" href="{{ url_for('purchase_list_detail', list_id=pl.id) }}" title="Відкрити список">
+                      <i class="bi bi-box-arrow-in-right"></i>
+                    </a>
+                    <button class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#editPurchaseListModal{{ pl.id }}" title="Редагувати">
+                      <i class="bi bi-pencil"></i>
+                    </button>
+                    <form method="POST" action="{{ url_for('warehouse_delete_purchase_list', list_id=pl.id) }}" onsubmit="return confirm('Видалити список «{{ pl.title }}»?');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                      <input type="hidden" name="return_page" value="{{ page }}"/>
+                      <input type="hidden" name="return_page_done" value="{{ page_done }}"/>
+                      <button type="submit" class="btn btn-outline-danger" title="Видалити" {% if pl.items_count > 0 %}disabled{% endif %}>
+                        <i class="bi bi-trash"></i>
+                      </button>
+                    </form>
+                  </div>
+                  {% if pl.items_count > 0 %}
+                  <div class="small text-muted mt-1">Видалення вимкнено: список не порожній</div>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% if total_pages > 1 %}
+          <nav aria-label="Пагінація списків закупівлі" class="mt-3">
+            <ul class="pagination justify-content-center mb-0">
+              {% if page > 1 %}
+              <li class="page-item">
+                <a class="page-link" href="{{ url_for('warehouse_purchase_lists', page=page-1, page_done=page_done) }}">Попередня</a>
+              </li>
+              {% else %}
+              <li class="page-item disabled">
+                <span class="page-link">Попередня</span>
+              </li>
+              {% endif %}
+
+              {% for p in range(1, total_pages + 1) %}
+                {% if p == page %}
+                <li class="page-item active">
+                  <span class="page-link">{{ p }}</span>
+                </li>
+                {% elif p <= 2 or p >= total_pages - 1 or (p >= page - 1 and p <= page + 1) %}
+                <li class="page-item">
+                  <a class="page-link" href="{{ url_for('warehouse_purchase_lists', page=p, page_done=page_done) }}">{{ p }}</a>
+                </li>
+                {% elif p == page - 2 or p == page + 2 %}
+                <li class="page-item disabled">
+                  <span class="page-link">...</span>
+                </li>
+                {% endif %}
+              {% endfor %}
+
+              {% if page < total_pages %}
+              <li class="page-item">
+                <a class="page-link" href="{{ url_for('warehouse_purchase_lists', page=page+1, page_done=page_done) }}">Наступна</a>
+              </li>
+              {% else %}
+              <li class="page-item disabled">
+                <span class="page-link">Наступна</span>
+              </li>
+              {% endif %}
+            </ul>
+          </nav>
+          <div class="text-center text-muted small mt-2">
+            Показано {{ (page - 1) * per_page + 1 }}-{{ active_end_index }} з {{ total_active_lists }} списків
+          </div>
+          {% endif %}
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">Списків поки немає.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% for pl in purchase_lists %}
+<div class="modal fade" id="editPurchaseListModal{{ pl.id }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Редагувати список</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрити"></button>
+      </div>
+      <form method="POST" action="{{ url_for('warehouse_edit_purchase_list', list_id=pl.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <input type="hidden" name="return_page" value="{{ page }}"/>
+        <input type="hidden" name="return_page_done" value="{{ page_done }}"/>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Компанія <span class="text-danger">*</span></label>
+            <select name="company_id" class="form-select" required>
+              <option value="">— оберіть —</option>
+              {% for c in companies %}
+              <option value="{{ c.id }}" {% if pl.company_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Назва <span class="text-danger">*</span></label>
+            <input type="text" name="title" class="form-control" required maxlength="200" value="{{ pl.title }}">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Опис</label>
+            <input type="text" name="description" class="form-control" maxlength="4000" value="{{ pl.description or '' }}">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Скасувати</button>
+          <button type="submit" class="btn btn-primary">Зберегти</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+{% if done_purchase_lists %}
+<div class="row mt-4">
+  <div class="col-12">
+    <div class="card border-secondary">
+      <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-check2-circle"></i> Виконані списки (DONE) — історія</h5>
+      </div>
+      <div class="card-body">
+        <div class="table-responsive">
+          <table class="table table-striped align-middle">
+            <thead>
+              <tr>
+                <th style="width: 80px;">ID</th>
+                <th style="width: 220px;">Компанія</th>
+                <th>Список</th>
+                <th style="width: 220px;">Статус</th>
+                <th style="width: 160px;">Виконано о</th>
+                <th style="width: 160px;">Позицій</th>
+                <th style="width: 120px;">Дії</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for pl in done_purchase_lists %}
+              <tr>
+                <td>#{{ pl.id }}</td>
+                <td>{{ pl.company_name or '—' }}</td>
+                <td>
+                  <strong>{{ pl.title }}</strong>
+                  {% if pl.description %}
+                  <div class="text-muted small">{{ pl.description[:120] }}{% if pl.description|length > 120 %}...{% endif %}</div>
+                  {% endif %}
+                </td>
+                <td>
+                  <form method="POST" action="{{ url_for('warehouse_set_purchase_list_status', list_id=pl.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="return_page" value="{{ page }}"/>
+                    <input type="hidden" name="return_page_done" value="{{ page_done }}"/>
+                    <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
+                      {% for code, label in status_labels.items() %}
+                      <option value="{{ code }}" {% if pl.status == code %}selected{% endif %}>{{ label }}</option>
+                      {% endfor %}
+                    </select>
+                  </form>
+                  <div class="mt-1">
+                    <span class="badge {{ pl.status_badge }}">{{ pl.status_label }}</span>
+                  </div>
+                </td>
+                <td class="text-nowrap small">{{ pl.done_at_label }}</td>
+                <td><span class="badge bg-secondary">{{ pl.items_count }}</span></td>
+                <td>
+                  <a class="btn btn-sm btn-outline-primary" href="{{ url_for('purchase_list_detail', list_id=pl.id) }}">
+                    <i class="bi bi-box-arrow-in-right"></i>
+                  </a>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% if total_pages_done > 1 %}
+          <nav aria-label="Пагінація виконаних списків" class="mt-3">
+            <ul class="pagination justify-content-center mb-0">
+              {% if page_done > 1 %}
+              <li class="page-item">
+                <a class="page-link" href="{{ url_for('warehouse_purchase_lists', page=page, page_done=page_done-1) }}">Попередня</a>
+              </li>
+              {% else %}
+              <li class="page-item disabled">
+                <span class="page-link">Попередня</span>
+              </li>
+              {% endif %}
+
+              {% for p in range(1, total_pages_done + 1) %}
+                {% if p == page_done %}
+                <li class="page-item active">
+                  <span class="page-link">{{ p }}</span>
+                </li>
+                {% elif p <= 2 or p >= total_pages_done - 1 or (p >= page_done - 1 and p <= page_done + 1) %}
+                <li class="page-item">
+                  <a class="page-link" href="{{ url_for('warehouse_purchase_lists', page=page, page_done=p) }}">{{ p }}</a>
+                </li>
+                {% elif p == page_done - 2 or p == page_done + 2 %}
+                <li class="page-item disabled">
+                  <span class="page-link">...</span>
+                </li>
+                {% endif %}
+              {% endfor %}
+
+              {% if page_done < total_pages_done %}
+              <li class="page-item">
+                <a class="page-link" href="{{ url_for('warehouse_purchase_lists', page=page, page_done=page_done+1) }}">Наступна</a>
+              </li>
+              {% else %}
+              <li class="page-item disabled">
+                <span class="page-link">Наступна</span>
+              </li>
+              {% endif %}
+            </ul>
+          </nav>
+          <div class="text-center text-muted small mt-2">
+            Показано {{ (page_done - 1) * per_page + 1 }}-{{ done_end_index }} з {{ total_done_lists }} списків
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+

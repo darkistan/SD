@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+
+{% block title %}Список закупівлі - {{ purchase_list.title }}{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-12">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+      <div>
+        <h1 class="mb-1"><i class="bi bi-list-ul"></i> {{ purchase_list.title }}</h1>
+        <div class="text-muted small">
+          Компанія: <strong>{{ purchase_list.company_name or '—' }}</strong>
+          <span class="mx-2">|</span>
+          Статус: <span class="badge {{ purchase_list.status_badge }}">{{ purchase_list.status_label }}</span>
+        </div>
+        {% if purchase_list.description %}
+        <div class="text-muted mt-1">{{ purchase_list.description }}</div>
+        {% endif %}
+      </div>
+      <a class="btn btn-outline-primary" href="{{ url_for('warehouse_purchase_lists') }}">
+        <i class="bi bi-arrow-left"></i> До списків
+      </a>
+    </div>
+  </div>
+</div>
+
+<div class="row mb-3">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0">Додати товар у список</h5>
+      </div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('purchase_list_add_item', list_id=purchase_list.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+          <div class="row g-2">
+            <div class="col-12">
+              <label class="form-label">Пошук товару</label>
+              <input type="text" id="stockItemSearch" class="form-control" placeholder="Почніть вводити назву або постачальника…">
+              <div class="form-text">Порада: введіть 2–3 символи — список нижче відфільтрується.</div>
+            </div>
+            <div class="col-12 col-md-8">
+              <label class="form-label">Товар <span class="text-danger">*</span></label>
+              <select name="stock_item_id" id="stockItemSelect" class="form-select" required size="8">
+                <option value="">— оберіть —</option>
+                {% for it in stock_items %}
+                <option value="{{ it.id }}">{{ it.name }}{% if it.supplier_name %} ({{ it.supplier_name }}){% endif %}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12 col-md-2">
+              <label class="form-label">Кількість <span class="text-danger">*</span></label>
+              <input type="number" name="quantity" class="form-control" min="1" value="1" required>
+            </div>
+            <div class="col-12 col-md-2">
+              <label class="form-label">Ціна (грн) <span class="text-danger">*</span></label>
+              <input type="text" name="unit_price" class="form-control" value="0.00" required placeholder="0.00">
+            </div>
+            <div class="col-12 col-md-2 d-flex align-items-end">
+              <button type="submit" class="btn btn-primary w-100">
+                <i class="bi bi-plus"></i> Додати
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <h5 class="mb-0">Позиції ({{ items|length }})</h5>
+      </div>
+      <div class="card-body">
+        {% if items %}
+        <div class="table-responsive">
+          <table class="table table-striped align-middle">
+            <thead>
+              <tr>
+                <th>Товар</th>
+                <th style="width: 220px;">Постачальник</th>
+                <th style="width: 160px;">Посилання</th>
+                <th style="width: 140px;">Кількість</th>
+                <th style="width: 140px;">Ціна</th>
+                <th style="width: 160px;">Сума</th>
+                <th style="width: 120px;">Дії</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in items %}
+              <tr>
+                <td>
+                  <strong>{{ row.name }}</strong>
+                  {% if row.description %}
+                  <div class="text-muted small">{{ row.description[:120] }}{% if row.description|length > 120 %}...{% endif %}</div>
+                  {% endif %}
+                </td>
+                <td>{{ row.supplier_name or '—' }}</td>
+                <td>
+                  {% if row.purchase_url %}
+                  <a class="btn btn-sm btn-outline-primary" href="{{ row.purchase_url }}" target="_blank" rel="noopener noreferrer">
+                    <i class="bi bi-box-arrow-up-right"></i>
+                  </a>
+                  {% else %}
+                  <span class="text-muted small">—</span>
+                  {% endif %}
+                </td>
+                <td colspan="2">
+                  <form method="POST" action="{{ url_for('purchase_list_update_item', list_id=purchase_list.id, item_id=row.id) }}" class="d-flex flex-wrap gap-2 align-items-center">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <div class="d-flex align-items-center gap-2">
+                      <div>
+                        <div class="small text-muted">К-сть</div>
+                        <input type="number" name="quantity" class="form-control form-control-sm" min="1" value="{{ row.quantity }}" style="max-width: 120px;" required>
+                      </div>
+                      <div>
+                        <div class="small text-muted">Ціна</div>
+                        <input type="text" name="unit_price" class="form-control form-control-sm" value="{{ row.unit_price }}" style="max-width: 120px;" required>
+                      </div>
+                    </div>
+                    <button type="submit" class="btn btn-sm btn-outline-success ms-auto" title="Зберегти">
+                      <i class="bi bi-check2"></i>
+                    </button>
+                  </form>
+                </td>
+                <td><span class="badge bg-primary">{{ row.line_sum }}</span></td>
+                <td>
+                  <form method="POST" action="{{ url_for('purchase_list_remove_item', list_id=purchase_list.id, item_id=row.id) }}" onsubmit="return confirm('Видалити «{{ row.name }}» зі списку?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Видалити зі списку">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="d-flex justify-content-end mt-2">
+          <div class="badge bg-success fs-6">Разом: {{ purchase_list.total_sum }}</div>
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">Список порожній.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const input = document.getElementById('stockItemSearch');
+  const select = document.getElementById('stockItemSelect');
+  if (!input || !select) return;
+
+  const allOptions = Array.from(select.options).map(o => ({
+    value: o.value,
+    text: o.text,
+    isPlaceholder: o.value === ''
+  }));
+
+  function render(filtered) {
+    const prev = select.value;
+    select.innerHTML = '';
+    filtered.forEach(o => {
+      const opt = document.createElement('option');
+      opt.value = o.value;
+      opt.textContent = o.text;
+      select.appendChild(opt);
+    });
+    // Повертаємо вибір, якщо опція лишилась
+    if (filtered.some(o => o.value === prev)) select.value = prev;
+  }
+
+  function applyFilter() {
+    const q = (input.value || '').trim().toLowerCase();
+    if (!q) {
+      render(allOptions);
+      return;
+    }
+    const filtered = allOptions.filter(o => o.isPlaceholder || o.text.toLowerCase().includes(q));
+    render(filtered);
+  }
+
+  input.addEventListener('input', applyFilter);
+
+  // Enter в полі пошуку переводить фокус у список
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      select.focus();
+    }
+  });
+});
+</script>
+

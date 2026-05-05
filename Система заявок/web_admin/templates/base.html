@@ -49,6 +49,13 @@
                     </li>
                     {% if current_user.is_authenticated and current_user.is_admin %}
                     <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('warehouse') }}">
+                            <i class="bi bi-cart-check"></i> Закупівлі
+                        </a>
+                    </li>
+                    {% endif %}
+                    {% if current_user.is_authenticated and current_user.is_admin %}
+                    <li class="nav-item">
                         <a class="nav-link" href="{{url_for('todo')}}">
                             <i class="bi bi-list-check"></i> TO DO
                         </a>
@@ -120,6 +127,21 @@
                             <span class="badge bg-danger ms-1">Адмін</span>
                         {% endif %}
                     </span>
+                    {% if current_user.is_admin %}
+                    <a
+                        href="{{ url_for('tickets') }}"
+                        class="btn btn-outline-light btn-sm position-relative"
+                        id="new-tickets-bell"
+                        title="Нові заявки"
+                        aria-label="Нові заявки"
+                    >
+                        <i class="bi bi-bell" id="new-tickets-bell-icon"></i>
+                        <span
+                            class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger d-none"
+                            id="new-tickets-badge"
+                        ></span>
+                    </a>
+                    {% endif %}
                     <button class="btn btn-outline-light btn-sm" id="theme-toggle" title="Перемкнути тему">
                         <i class="bi bi-sun-fill" id="theme-icon"></i>
                     </button>

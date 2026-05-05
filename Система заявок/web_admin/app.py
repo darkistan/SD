@@ -16,12 +16,13 @@ from flask_limiter.util import get_remote_address
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
 from dotenv import load_dotenv
+from sqlalchemy import text, func
 
 # Додаємо батьківську директорію в Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from database import init_database, get_session, get_bot_config, set_bot_config
-from models import User, Company, Ticket, TicketItem, ActiveSession, Log, PendingRequest, Printer, CartridgeType, PrinterCartridgeCompatibility, Contractor, TicketStatus, Poll, PollOption, PollResponse, Announcement, AnnouncementRecipient, TicketChat, Task, Timer, BackupSettings, KnowledgeBaseNote
+from models import User, Company, Ticket, TicketItem, ActiveSession, Log, PendingRequest, Printer, CartridgeType, PrinterCartridgeCompatibility, Contractor, TicketStatus, Poll, PollOption, PollResponse, Announcement, AnnouncementRecipient, TicketChat, Task, Timer, BackupSettings, KnowledgeBaseNote, PurchaseSupplier, StockItem, PurchaseList, PurchaseListItem
 from ticket_manager import get_ticket_manager
 from contact_utils import normalize_phone
 from printer_manager import get_printer_manager
@@ -432,12 +433,55 @@ def dashboard():
         # Отримуємо таймери
         timer_manager = get_timer_manager()
         timers = timer_manager.get_all_timers()
+
+        # План закупівлі (списки) — лише перегляд на Dashboard (без позицій)
+        with get_session() as session:
+            purchase_lists_raw = (
+                session.query(PurchaseList)
+                .filter(PurchaseList.status != "DONE")
+                .order_by(PurchaseList.updated_at.desc(), PurchaseList.title.asc())
+                .all()
+            )
+            lists_with_items = []
+            for pl in purchase_lists_raw:
+                company_name = None
+                if pl.company_id:
+                    c = session.query(Company).filter(Company.id == pl.company_id).first()
+                    company_name = c.name if c else None
+                items_count = session.query(PurchaseListItem).filter(PurchaseListItem.purchase_list_id == pl.id).count()
+                if items_count <= 0:
+                    continue
+                total_cents = (
+                    session.query(
+                        func.coalesce(
+                            func.sum(PurchaseListItem.quantity * PurchaseListItem.unit_price_cents),
+                            0,
+                        )
+                    )
+                    .filter(PurchaseListItem.purchase_list_id == pl.id)
+                    .scalar()
+                )
+                total_cents = int(total_cents or 0)
+                lists_with_items.append(
+                    {
+                        "id": pl.id,
+                        "company_name": company_name,
+                        "title": pl.title,
+                        "description": pl.description,
+                        "status": pl.status,
+                        "status_label": PURCHASE_LIST_STATUS_LABELS.get(pl.status, pl.status),
+                        "status_badge": PURCHASE_LIST_STATUS_BADGES.get(pl.status, "bg-secondary"),
+                        "items_count": items_count,
+                        "total_sum": _money_from_cents(total_cents),
+                    }
+                )
     else:
         # Для користувача - тільки свої
         tickets = ticket_manager.get_user_tickets(current_user.user_id, limit=10)
         cartridge_stats = {}
         todo_stats = None
         timers = []
+        lists_with_items = []
     
     # Перевіряємо активні чати для кожного тікета (тільки для користувачів з Telegram)
     chat_manager = get_chat_manager()
@@ -453,6 +497,7 @@ def dashboard():
                          cartridge_stats=cartridge_stats,
                          todo_stats=todo_stats,
                          timers=timers,
+                         purchase_lists=lists_with_items,
                          date_from=date_from.strftime('%Y-%m-%d'),
                          date_to=date_to.strftime('%Y-%m-%d'))
 
@@ -614,6 +659,949 @@ def tickets():
                          total_tickets=total_tickets,
                          per_page=per_page,
                          end_index=min(page * per_page, total_tickets))
+
+
+def _sanitize_http_url(raw: str, max_len: int = 500) -> str:
+    """
+    Проста санітизація URL: дозволяємо лише http(s) і обмежуємо довжину.
+
+    Args:
+        raw: Вхідний рядок URL.
+        max_len: Максимальна довжина.
+
+    Returns:
+        Очищений URL або порожній рядок.
+    """
+    url = (raw or "").strip()
+    if not url:
+        return ""
+    if len(url) > max_len:
+        url = url[:max_len]
+    if url.startswith("http://") or url.startswith("https://"):
+        return url
+    return ""
+
+
+def _sanitize_text(raw: str, max_len: int) -> str:
+    """
+    Санітизація текстового поля: trim + обрізання.
+
+    Args:
+        raw: Вхідний текст.
+        max_len: Максимальна довжина.
+
+    Returns:
+        Очищений текст (може бути порожнім).
+    """
+    s = (raw or "").strip()
+    if not s:
+        return ""
+    return s[:max_len] if len(s) > max_len else s
+
+
+def _format_dt_ua(dt: Optional[datetime]) -> str:
+    """Вивід дати й часу для інтерфейсу (д.м.рррр гг:хх)."""
+    if dt is None:
+        return "—"
+    return dt.strftime("%d.%m.%Y %H:%M")
+
+
+# Пагінація модуля «Закупівлі» (розмір сторінки)
+PROCUREMENT_PAGE_ITEMS = 25
+PROCUREMENT_PAGE_SUPPLIERS = 25
+PROCUREMENT_PAGE_LISTS = 15
+PROCUREMENT_PAGE_LIST_LINES = 25
+
+
+def _paginate_meta(page: Optional[int], per_page: int, total: int) -> dict:
+    """
+    Нормалізація номера сторінки та total_pages (логіка як на /tickets).
+
+    Args:
+        page: Номер сторінки з query (1-based).
+        per_page: Розмір сторінки.
+        total: Загальна кількість записів.
+
+    Returns:
+        Словник: page, total_pages, offset, per_page, end_index.
+    """
+    try:
+        p = int(page) if page is not None else 1
+    except (TypeError, ValueError):
+        p = 1
+    if p < 1:
+        p = 1
+    total_pages = (total + per_page - 1) // per_page if total > 0 else 0
+    if total_pages > 0 and p > total_pages:
+        p = total_pages
+    offset = (p - 1) * per_page
+    end_index = min(p * per_page, total)
+    return {"page": p, "total_pages": total_pages, "offset": offset, "per_page": per_page, "end_index": end_index}
+
+
+def _redirect_purchase_list_detail(list_id: int) -> Response:
+    """Повернення на сторінку деталей списку з урахуванням return_page у формі."""
+    rp = request.form.get("return_page", type=int) or 1
+    if rp < 1:
+        rp = 1
+    return redirect(url_for("purchase_list_detail", list_id=list_id, page=rp))
+
+
+def _redirect_warehouse_purchase_lists_from_form() -> Response:
+    """Після POST на сторінці списків — зберегти пагінацію (return_page / return_page_done)."""
+    rp = request.form.get("return_page", type=int) or 1
+    rpd = request.form.get("return_page_done", type=int) or 1
+    if rp < 1:
+        rp = 1
+    if rpd < 1:
+        rpd = 1
+    kw: dict = {}
+    if rp > 1:
+        kw["page"] = rp
+    if rpd > 1:
+        kw["page_done"] = rpd
+    return redirect(url_for("warehouse_purchase_lists", **kw))
+
+
+def _redirect_after_new_purchase_list() -> Response:
+    """Після створення списку: перша сторінка активних; зберігається сторінка історії DONE."""
+    rpd = request.form.get("return_page_done", type=int) or 1
+    if rpd < 1:
+        rpd = 1
+    if rpd > 1:
+        return redirect(url_for("warehouse_purchase_lists", page_done=rpd))
+    return redirect(url_for("warehouse_purchase_lists"))
+
+
+def _redirect_warehouse_from_form() -> Response:
+    """Після POST на сторінці товарів складу — зберегти return_page."""
+    rp = request.form.get("return_page", type=int) or 1
+    if rp < 1:
+        rp = 1
+    if rp > 1:
+        return redirect(url_for("warehouse", page=rp))
+    return redirect(url_for("warehouse"))
+
+
+def _redirect_warehouse_suppliers_from_form() -> Response:
+    """Після POST на сторінці постачальників — зберегти return_page."""
+    rp = request.form.get("return_page", type=int) or 1
+    if rp < 1:
+        rp = 1
+    if rp > 1:
+        return redirect(url_for("warehouse_suppliers", page=rp))
+    return redirect(url_for("warehouse_suppliers"))
+
+
+def _money_from_cents(cents: int) -> str:
+    """Формат грошей у гривнях з копійками."""
+    try:
+        c = int(cents or 0)
+    except (ValueError, TypeError):
+        c = 0
+    sign = "-" if c < 0 else ""
+    c = abs(c)
+    return f"{sign}{c // 100}.{c % 100:02d}"
+
+
+def _parse_money_to_cents(raw: str) -> int:
+    """Парсинг ціни у гривнях (рядок) → копійки (int)."""
+    s = (raw or "").strip().replace(",", ".")
+    if not s:
+        return 0
+    allowed = "".join(ch for ch in s if ch.isdigit() or ch == ".")
+    if allowed.count(".") > 1:
+        first = allowed.find(".")
+        allowed = allowed[: first + 1] + allowed[first + 1 :].replace(".", "")
+    if not allowed:
+        return 0
+    if "." in allowed:
+        a, b = allowed.split(".", 1)
+        b = (b + "00")[:2]
+    else:
+        a, b = allowed, "00"
+    try:
+        return int(a or "0") * 100 + int(b or "0")
+    except ValueError:
+        return 0
+
+
+PURCHASE_LIST_STATUS_LABELS = {
+    "FORMING": "Формування",
+    "APPROVAL": "Узгодження",
+    "INVOICE_RECEIVED": "Рахунок отримано",
+    "PAID": "Сплачено",
+    "DONE": "Виконано",
+}
+
+PURCHASE_LIST_STATUS_BADGES = {
+    "FORMING": "bg-info text-dark",
+    "APPROVAL": "bg-warning text-dark",
+    "INVOICE_RECEIVED": "bg-primary",
+    "PAID": "bg-success",
+    "DONE": "bg-secondary",
+}
+
+
+@app.route("/warehouse")
+@admin_required
+def warehouse():
+    """Склад: довідник товарів для закупівель."""
+    page = request.args.get("page", 1, type=int) or 1
+    per_page = PROCUREMENT_PAGE_ITEMS
+    with get_session() as session:
+        suppliers_raw = session.query(PurchaseSupplier).order_by(PurchaseSupplier.name.asc()).all()
+        suppliers = [
+            {
+                "id": s.id,
+                "name": s.name,
+                "website_url": s.website_url,
+                "has_contract": bool(s.has_contract),
+            }
+            for s in suppliers_raw
+        ]
+
+        total_items = session.query(StockItem).count()
+        meta = _paginate_meta(page, per_page, total_items)
+        items_raw = (
+            session.query(StockItem, PurchaseSupplier)
+            .join(PurchaseSupplier, PurchaseSupplier.id == StockItem.supplier_id)
+            .order_by(StockItem.updated_at.desc(), StockItem.name.asc())
+            .offset(meta["offset"])
+            .limit(per_page)
+            .all()
+        )
+
+        items = [
+            {
+                "id": item.id,
+                "name": item.name,
+                "description": item.description,
+                "purchase_url": item.purchase_url,
+                "supplier_id": supplier.id,
+                "supplier_name": supplier.name,
+            }
+            for (item, supplier) in items_raw
+        ]
+
+    return render_template(
+        "warehouse.html",
+        suppliers=suppliers,
+        items=items,
+        page=meta["page"],
+        total_pages=meta["total_pages"],
+        per_page=per_page,
+        total_items=total_items,
+        end_index=meta["end_index"],
+    )
+
+
+@app.route("/warehouse/items/add", methods=["POST"])
+@admin_required
+def warehouse_add_item():
+    """Додати товар на склад."""
+    name = _sanitize_text(request.form.get("name", ""), 300)
+    description = _sanitize_text(request.form.get("description", ""), 2000)
+    supplier_id = request.form.get("supplier_id", type=int)
+    purchase_url = _sanitize_http_url(request.form.get("purchase_url", ""), 500)
+
+    if not name:
+        flash("Назва товару не може бути порожньою.", "danger")
+        return _redirect_warehouse_from_form()
+
+    if supplier_id is None:
+        flash("Оберіть постачальника.", "danger")
+        return _redirect_warehouse_from_form()
+
+    try:
+        with get_session() as session:
+            supplier = session.query(PurchaseSupplier).filter(PurchaseSupplier.id == supplier_id).first()
+            if not supplier:
+                flash("Постачальника не знайдено.", "danger")
+                return _redirect_warehouse_from_form()
+
+            item = StockItem(
+                name=name,
+                description=description if description else None,
+                purchase_url=purchase_url if purchase_url else None,
+                supplier_id=supplier_id,
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+            )
+            session.add(item)
+            session.commit()
+            flash("Товар додано.", "success")
+    except Exception as e:
+        logger.log_error(f"Помилка додавання товару: {e}")
+        flash("Помилка додавання товару.", "danger")
+
+    return _redirect_warehouse_from_form()
+
+
+@app.route("/warehouse/items/<int:item_id>/delete", methods=["POST"])
+@admin_required
+def warehouse_delete_item(item_id: int):
+    """Видалити товар зі складу."""
+    try:
+        with get_session() as session:
+            item = session.query(StockItem).filter(StockItem.id == item_id).first()
+            if not item:
+                flash("Товар не знайдено.", "danger")
+                return _redirect_warehouse_from_form()
+            session.delete(item)
+            session.commit()
+            flash("Товар видалено.", "success")
+    except Exception as e:
+        logger.log_error(f"Помилка видалення товару {item_id}: {e}")
+        flash("Помилка видалення товару.", "danger")
+    return _redirect_warehouse_from_form()
+
+
+@app.route("/warehouse/items/<int:item_id>/edit", methods=["POST"])
+@admin_required
+def warehouse_edit_item(item_id: int):
+    """Редагувати всі атрибути товару складу."""
+    name = _sanitize_text(request.form.get("name", ""), 300)
+    description = _sanitize_text(request.form.get("description", ""), 2000)
+    supplier_id = request.form.get("supplier_id", type=int)
+    purchase_url = _sanitize_http_url(request.form.get("purchase_url", ""), 500)
+
+    if not name:
+        flash("Назва товару не може бути порожньою.", "danger")
+        return _redirect_warehouse_from_form()
+
+    if supplier_id is None:
+        flash("Оберіть постачальника.", "danger")
+        return _redirect_warehouse_from_form()
+
+    try:
+        with get_session() as session:
+            item = session.query(StockItem).filter(StockItem.id == item_id).first()
+            if not item:
+                flash("Товар не знайдено.", "danger")
+                return _redirect_warehouse_from_form()
+
+            supplier = session.query(PurchaseSupplier).filter(PurchaseSupplier.id == supplier_id).first()
+            if not supplier:
+                flash("Постачальника не знайдено.", "danger")
+                return _redirect_warehouse_from_form()
+
+            item.name = name
+            item.description = description if description else None
+            item.purchase_url = purchase_url if purchase_url else None
+            item.supplier_id = supplier_id
+            item.updated_at = datetime.now()
+            session.commit()
+            flash("Товар оновлено.", "success")
+    except Exception as e:
+        logger.log_error(f"Помилка редагування товару {item_id}: {e}")
+        flash("Помилка оновлення товару.", "danger")
+
+    return _redirect_warehouse_from_form()
+
+
+@app.route("/warehouse/suppliers")
+@admin_required
+def warehouse_suppliers():
+    """Довідник постачальників для закупівель."""
+    page = request.args.get("page", 1, type=int) or 1
+    per_page = PROCUREMENT_PAGE_SUPPLIERS
+    with get_session() as session:
+        total_suppliers = session.query(PurchaseSupplier).count()
+        meta = _paginate_meta(page, per_page, total_suppliers)
+        suppliers_raw = (
+            session.query(PurchaseSupplier)
+            .order_by(PurchaseSupplier.name.asc())
+            .offset(meta["offset"])
+            .limit(per_page)
+            .all()
+        )
+
+        # Уникаємо DetachedInstanceError: передаємо в шаблон plain dict
+        suppliers = [
+            {
+                "id": s.id,
+                "name": s.name,
+                "website_url": s.website_url,
+                "has_contract": bool(s.has_contract),
+                "contact_info": s.contact_info,
+            }
+            for s in suppliers_raw
+        ]
+
+    return render_template(
+        "warehouse_suppliers.html",
+        suppliers=suppliers,
+        page=meta["page"],
+        total_pages=meta["total_pages"],
+        per_page=per_page,
+        total_suppliers=total_suppliers,
+        end_index=meta["end_index"],
+    )
+
+
+@app.route("/warehouse/suppliers/add", methods=["POST"])
+@admin_required
+def warehouse_add_supplier():
+    """Додати постачальника."""
+    name = _sanitize_text(request.form.get("name", ""), 200)
+    website_url = _sanitize_http_url(request.form.get("website_url", ""), 500)
+    has_contract = request.form.get("has_contract") == "on"
+    contact_info = _sanitize_text(request.form.get("contact_info", ""), 2000)
+
+    if not name:
+        flash("Назва постачальника не може бути порожньою.", "danger")
+        return _redirect_warehouse_suppliers_from_form()
+
+    try:
+        with get_session() as session:
+            existing = session.query(PurchaseSupplier).filter(PurchaseSupplier.name == name).first()
+            if existing:
+                flash("Постачальник з такою назвою вже існує.", "warning")
+                return _redirect_warehouse_suppliers_from_form()
+
+            session.add(
+                PurchaseSupplier(
+                    name=name,
+                    website_url=website_url if website_url else None,
+                    has_contract=has_contract,
+                    contact_info=contact_info if contact_info else None,
+                    created_at=datetime.now(),
+                    updated_at=datetime.now(),
+                )
+            )
+            session.commit()
+            flash("Постачальника додано.", "success")
+    except Exception as e:
+        logger.log_error(f"Помилка додавання постачальника: {e}")
+        flash("Помилка додавання постачальника.", "danger")
+
+    return _redirect_warehouse_suppliers_from_form()
+
+
+@app.route("/warehouse/suppliers/<int:supplier_id>/edit", methods=["POST"])
+@admin_required
+def warehouse_edit_supplier(supplier_id: int):
+    """Редагувати постачальника."""
+    name = _sanitize_text(request.form.get("name", ""), 200)
+    website_url = _sanitize_http_url(request.form.get("website_url", ""), 500)
+    has_contract = request.form.get("has_contract") == "on"
+    contact_info = _sanitize_text(request.form.get("contact_info", ""), 2000)
+
+    if not name:
+        flash("Назва постачальника не може бути порожньою.", "danger")
+        return _redirect_warehouse_suppliers_from_form()
+
+    try:
+        with get_session() as session:
+            supplier = session.query(PurchaseSupplier).filter(PurchaseSupplier.id == supplier_id).first()
+            if not supplier:
+                flash("Постачальника не знайдено.", "danger")
+                return _redirect_warehouse_suppliers_from_form()
+
+            # Перевірка унікальності назви
+            dup = (
+                session.query(PurchaseSupplier)
+                .filter(PurchaseSupplier.name == name, PurchaseSupplier.id != supplier_id)
+                .first()
+            )
+            if dup:
+                flash("Постачальник з такою назвою вже існує.", "warning")
+                return _redirect_warehouse_suppliers_from_form()
+
+            supplier.name = name
+            supplier.website_url = website_url if website_url else None
+            supplier.has_contract = has_contract
+            supplier.contact_info = contact_info if contact_info else None
+            supplier.updated_at = datetime.now()
+            session.commit()
+            flash("Постачальника оновлено.", "success")
+    except Exception as e:
+        logger.log_error(f"Помилка оновлення постачальника {supplier_id}: {e}")
+        flash("Помилка оновлення постачальника.", "danger")
+
+    return _redirect_warehouse_suppliers_from_form()
+
+
+@app.route("/warehouse/suppliers/<int:supplier_id>/toggle_contract", methods=["POST"])
+@admin_required
+def warehouse_toggle_supplier_contract(supplier_id: int):
+    """Inline: перемкнути наявність договору у постачальника."""
+    has_contract = request.form.get("has_contract") == "on"
+    try:
+        with get_session() as session:
+            supplier = session.query(PurchaseSupplier).filter(PurchaseSupplier.id == supplier_id).first()
+            if not supplier:
+                flash("Постачальника не знайдено.", "danger")
+                return _redirect_warehouse_suppliers_from_form()
+            supplier.has_contract = has_contract
+            supplier.updated_at = datetime.now()
+            session.commit()
+    except Exception as e:
+        logger.log_error(f"Помилка зміни договору постачальника {supplier_id}: {e}")
+        flash("Помилка оновлення.", "danger")
+    return _redirect_warehouse_suppliers_from_form()
+
+
+@app.route("/warehouse/suppliers/<int:supplier_id>/delete", methods=["POST"])
+@admin_required
+def warehouse_delete_supplier(supplier_id: int):
+    """Видалити постачальника (заборонено, якщо є прив'язані товари)."""
+    try:
+        with get_session() as session:
+            supplier = session.query(PurchaseSupplier).filter(PurchaseSupplier.id == supplier_id).first()
+            if not supplier:
+                flash("Постачальника не знайдено.", "danger")
+                return _redirect_warehouse_suppliers_from_form()
+
+            items_count = session.query(StockItem).filter(StockItem.supplier_id == supplier_id).count()
+            if items_count > 0:
+                flash("Не можна видалити постачальника: є прив'язані товари.", "warning")
+                return _redirect_warehouse_suppliers_from_form()
+
+            session.delete(supplier)
+            session.commit()
+            flash("Постачальника видалено.", "success")
+    except Exception as e:
+        logger.log_error(f"Помилка видалення постачальника {supplier_id}: {e}")
+        flash("Помилка видалення постачальника.", "danger")
+    return _redirect_warehouse_suppliers_from_form()
+
+
+@app.route("/warehouse/purchase_lists")
+@admin_required
+def warehouse_purchase_lists():
+    """Списки закупівлі: створення/опис/статус."""
+    page = request.args.get("page", 1, type=int) or 1
+    page_done = request.args.get("page_done", 1, type=int) or 1
+    per_page = PROCUREMENT_PAGE_LISTS
+
+    with get_session() as session:
+        companies_raw = session.query(Company).order_by(Company.name.asc()).all()
+        companies = [{"id": c.id, "name": c.name} for c in companies_raw]
+
+        total_active = session.query(PurchaseList).filter(PurchaseList.status != "DONE").count()
+        meta_a = _paginate_meta(page, per_page, total_active)
+        active_pls = (
+            session.query(PurchaseList)
+            .filter(PurchaseList.status != "DONE")
+            .order_by(PurchaseList.updated_at.desc(), PurchaseList.title.asc())
+            .offset(meta_a["offset"])
+            .limit(per_page)
+            .all()
+        )
+
+        lists_data = []
+        for pl in active_pls:
+            company_name = None
+            if pl.company_id:
+                c = session.query(Company).filter(Company.id == pl.company_id).first()
+                company_name = c.name if c else None
+            lists_data.append(
+                {
+                    "id": pl.id,
+                    "company_id": pl.company_id,
+                    "company_name": company_name,
+                    "title": pl.title,
+                    "description": pl.description,
+                    "status": pl.status,
+                    "status_label": PURCHASE_LIST_STATUS_LABELS.get(pl.status, pl.status),
+                    "status_badge": PURCHASE_LIST_STATUS_BADGES.get(pl.status, "bg-secondary"),
+                    "items_count": session.query(PurchaseListItem)
+                    .filter(PurchaseListItem.purchase_list_id == pl.id)
+                    .count(),
+                }
+            )
+
+        total_done = session.query(PurchaseList).filter(PurchaseList.status == "DONE").count()
+        meta_d = _paginate_meta(page_done, per_page, total_done)
+        done_pls = (
+            session.query(PurchaseList)
+            .filter(PurchaseList.status == "DONE")
+            .order_by(
+                func.coalesce(PurchaseList.done_at, PurchaseList.updated_at).desc(),
+                PurchaseList.id.desc(),
+            )
+            .offset(meta_d["offset"])
+            .limit(per_page)
+            .all()
+        )
+
+        done_lists_data = []
+        for pl in done_pls:
+            company_name = None
+            if pl.company_id:
+                c = session.query(Company).filter(Company.id == pl.company_id).first()
+                company_name = c.name if c else None
+            done_lists_data.append(
+                {
+                    "id": pl.id,
+                    "company_id": pl.company_id,
+                    "company_name": company_name,
+                    "title": pl.title,
+                    "description": pl.description,
+                    "status": pl.status,
+                    "status_label": PURCHASE_LIST_STATUS_LABELS.get(pl.status, pl.status),
+                    "status_badge": PURCHASE_LIST_STATUS_BADGES.get(pl.status, "bg-secondary"),
+                    "items_count": session.query(PurchaseListItem)
+                    .filter(PurchaseListItem.purchase_list_id == pl.id)
+                    .count(),
+                    "done_at_label": _format_dt_ua(pl.done_at),
+                }
+            )
+
+    return render_template(
+        "purchase_lists.html",
+        purchase_lists=lists_data,
+        done_purchase_lists=done_lists_data,
+        companies=companies,
+        status_labels=PURCHASE_LIST_STATUS_LABELS,
+        page=meta_a["page"],
+        total_pages=meta_a["total_pages"],
+        per_page=per_page,
+        total_active_lists=total_active,
+        active_end_index=meta_a["end_index"],
+        page_done=meta_d["page"],
+        total_pages_done=meta_d["total_pages"],
+        total_done_lists=total_done,
+        done_end_index=meta_d["end_index"],
+    )
+
+
+@app.route("/warehouse/purchase_lists/add", methods=["POST"])
+@admin_required
+def warehouse_add_purchase_list():
+    """Створити список закупівлі."""
+    title = _sanitize_text(request.form.get("title", ""), 200)
+    description = _sanitize_text(request.form.get("description", ""), 4000)
+    company_id = request.form.get("company_id", type=int)
+    if not title:
+        flash("Назва списку не може бути порожньою.", "danger")
+        return _redirect_warehouse_purchase_lists_from_form()
+    if not company_id:
+        flash("Оберіть компанію.", "danger")
+        return _redirect_warehouse_purchase_lists_from_form()
+
+    try:
+        with get_session() as session:
+            company = session.query(Company).filter(Company.id == company_id).first()
+            if not company:
+                flash("Компанію не знайдено.", "danger")
+                return _redirect_warehouse_purchase_lists_from_form()
+            existing = session.query(PurchaseList).filter(PurchaseList.title == title).first()
+            if existing:
+                flash("Список з такою назвою вже існує.", "warning")
+                return _redirect_warehouse_purchase_lists_from_form()
+            session.add(
+                PurchaseList(
+                    company_id=company_id,
+                    title=title,
+                    description=description if description else None,
+                    status="FORMING",
+                    created_at=datetime.now(),
+                    updated_at=datetime.now(),
+                )
+            )
+            session.commit()
+            flash("Список створено.", "success")
+    except Exception as e:
+        logger.log_error(f"Помилка створення списку: {e}")
+        flash("Помилка створення списку.", "danger")
+
+    return _redirect_after_new_purchase_list()
+
+
+@app.route("/warehouse/purchase_lists/<int:list_id>/edit", methods=["POST"])
+@admin_required
+def warehouse_edit_purchase_list(list_id: int):
+    """Редагувати список закупівлі (назва/опис)."""
+    title = _sanitize_text(request.form.get("title", ""), 200)
+    description = _sanitize_text(request.form.get("description", ""), 4000)
+    company_id = request.form.get("company_id", type=int)
+    if not title:
+        flash("Назва списку не може бути порожньою.", "danger")
+        return _redirect_warehouse_purchase_lists_from_form()
+    if not company_id:
+        flash("Оберіть компанію.", "danger")
+        return _redirect_warehouse_purchase_lists_from_form()
+
+    try:
+        with get_session() as session:
+            pl = session.query(PurchaseList).filter(PurchaseList.id == list_id).first()
+            if not pl:
+                flash("Список не знайдено.", "danger")
+                return _redirect_warehouse_purchase_lists_from_form()
+
+            company = session.query(Company).filter(Company.id == company_id).first()
+            if not company:
+                flash("Компанію не знайдено.", "danger")
+                return _redirect_warehouse_purchase_lists_from_form()
+
+            dup = session.query(PurchaseList).filter(PurchaseList.title == title, PurchaseList.id != list_id).first()
+            if dup:
+                flash("Список з такою назвою вже існує.", "warning")
+                return _redirect_warehouse_purchase_lists_from_form()
+
+            pl.title = title
+            pl.description = description if description else None
+            pl.company_id = company_id
+            pl.updated_at = datetime.now()
+            session.commit()
+            flash("Список оновлено.", "success")
+    except Exception as e:
+        logger.log_error(f"Помилка редагування списку {list_id}: {e}")
+        flash("Помилка оновлення списку.", "danger")
+
+    return _redirect_warehouse_purchase_lists_from_form()
+
+
+@app.route("/warehouse/purchase_lists/<int:list_id>/set_status", methods=["POST"])
+@admin_required
+def warehouse_set_purchase_list_status(list_id: int):
+    """Inline: змінити статус списку закупівлі."""
+    status = (request.form.get("status") or "").strip()
+    if status not in PURCHASE_LIST_STATUS_LABELS:
+        flash("Невірний статус.", "danger")
+        return _redirect_warehouse_purchase_lists_from_form()
+
+    try:
+        with get_session() as session:
+            pl = session.query(PurchaseList).filter(PurchaseList.id == list_id).first()
+            if not pl:
+                flash("Список не знайдено.", "danger")
+                return _redirect_warehouse_purchase_lists_from_form()
+            old_status = pl.status
+            now = datetime.now()
+            pl.status = status
+            pl.updated_at = now
+            if status == "DONE" and old_status != "DONE":
+                pl.done_at = now
+            elif status != "DONE" and old_status == "DONE":
+                pl.done_at = None
+            session.commit()
+            flash("Статус оновлено.", "success")
+    except Exception as e:
+        logger.log_error(f"Помилка зміни статусу списку {list_id}: {e}")
+        flash("Помилка оновлення статусу.", "danger")
+
+    return _redirect_warehouse_purchase_lists_from_form()
+
+
+@app.route("/warehouse/purchase_lists/<int:list_id>/delete", methods=["POST"])
+@admin_required
+def warehouse_delete_purchase_list(list_id: int):
+    """Видалити список закупівлі (заборонено, якщо не порожній)."""
+    try:
+        with get_session() as session:
+            pl = session.query(PurchaseList).filter(PurchaseList.id == list_id).first()
+            if not pl:
+                flash("Список не знайдено.", "danger")
+                return _redirect_warehouse_purchase_lists_from_form()
+
+            cnt = session.query(PurchaseListItem).filter(PurchaseListItem.purchase_list_id == list_id).count()
+            if cnt > 0:
+                flash("Не можна видалити список: він не порожній.", "warning")
+                return _redirect_warehouse_purchase_lists_from_form()
+
+            session.delete(pl)
+            session.commit()
+            flash("Список видалено.", "success")
+    except Exception as e:
+        logger.log_error(f"Помилка видалення списку {list_id}: {e}")
+        flash("Помилка видалення списку.", "danger")
+
+    return _redirect_warehouse_purchase_lists_from_form()
+
+
+@app.route("/warehouse/purchase_lists/<int:list_id>")
+@admin_required
+def purchase_list_detail(list_id: int):
+    """Сторінка конкретного списку закупівлі: наповнення та кількість позицій."""
+    with get_session() as session:
+        pl = session.query(PurchaseList).filter(PurchaseList.id == list_id).first()
+        if not pl:
+            flash("Список не знайдено.", "danger")
+            return redirect(url_for("warehouse_purchase_lists"))
+
+        company_name = None
+        if pl.company_id:
+            c = session.query(Company).filter(Company.id == pl.company_id).first()
+            company_name = c.name if c else None
+
+        # Позиції списку з кількістю
+        rows = (
+            session.query(StockItem, PurchaseSupplier, PurchaseListItem)
+            .join(PurchaseListItem, PurchaseListItem.stock_item_id == StockItem.id)
+            .join(PurchaseSupplier, PurchaseSupplier.id == StockItem.supplier_id)
+            .filter(PurchaseListItem.purchase_list_id == pl.id)
+            .order_by(StockItem.name.asc())
+            .all()
+        )
+        items = [
+            {
+                "id": item.id,
+                "name": item.name,
+                "description": item.description,
+                "purchase_url": item.purchase_url,
+                "supplier_name": supplier.name if supplier else None,
+                "quantity": (pli.quantity or 1),
+                "unit_price": _money_from_cents(pli.unit_price_cents or 0),
+                "line_sum": _money_from_cents((pli.quantity or 1) * (pli.unit_price_cents or 0)),
+            }
+            for (item, supplier, pli) in rows
+        ]
+        total_cents = sum((pli.quantity or 1) * (pli.unit_price_cents or 0) for (_i, _s, pli) in rows)
+
+        # Товари для додавання (всі)
+        stock_rows = (
+            session.query(StockItem, PurchaseSupplier)
+            .join(PurchaseSupplier, PurchaseSupplier.id == StockItem.supplier_id)
+            .order_by(StockItem.name.asc())
+            .all()
+        )
+        stock_items = [
+            {"id": it.id, "name": it.name, "supplier_name": sup.name if sup else None}
+            for (it, sup) in stock_rows
+        ]
+
+        purchase_list = {
+            "id": pl.id,
+            "company_id": pl.company_id,
+            "company_name": company_name,
+            "title": pl.title,
+            "description": pl.description,
+            "status": pl.status,
+            "status_label": PURCHASE_LIST_STATUS_LABELS.get(pl.status, pl.status),
+            "status_badge": PURCHASE_LIST_STATUS_BADGES.get(pl.status, "bg-secondary"),
+            "total_sum": _money_from_cents(total_cents),
+        }
+
+    return render_template(
+        "purchase_list_detail.html",
+        purchase_list=purchase_list,
+        stock_items=stock_items,
+        items=items,
+    )
+
+
+@app.route("/warehouse/purchase_lists/<int:list_id>/items/add", methods=["POST"])
+@admin_required
+def purchase_list_add_item(list_id: int):
+    """Додати товар у список закупівлі з кількістю."""
+    stock_item_id = request.form.get("stock_item_id", type=int)
+    quantity = request.form.get("quantity", type=int)
+    unit_price_cents = _parse_money_to_cents(request.form.get("unit_price", ""))
+    if not stock_item_id:
+        flash("Оберіть товар.", "danger")
+        return redirect(url_for("purchase_list_detail", list_id=list_id))
+    if quantity is None or quantity < 1:
+        flash("Кількість має бути числом ≥ 1.", "danger")
+        return redirect(url_for("purchase_list_detail", list_id=list_id))
+    try:
+        with get_session() as session:
+            pl = session.query(PurchaseList).filter(PurchaseList.id == list_id).first()
+            if not pl:
+                flash("Список не знайдено.", "danger")
+                return redirect(url_for("warehouse_purchase_lists"))
+            item = session.query(StockItem).filter(StockItem.id == stock_item_id).first()
+            if not item:
+                flash("Товар не знайдено.", "danger")
+                return redirect(url_for("purchase_list_detail", list_id=list_id))
+
+            existing = (
+                session.query(PurchaseListItem)
+                .filter(PurchaseListItem.purchase_list_id == list_id, PurchaseListItem.stock_item_id == stock_item_id)
+                .first()
+            )
+            if existing:
+                existing.quantity = quantity
+                existing.unit_price_cents = unit_price_cents
+                existing.updated_at = datetime.now()
+            else:
+                session.add(
+                    PurchaseListItem(
+                        purchase_list_id=list_id,
+                        stock_item_id=stock_item_id,
+                        quantity=quantity,
+                        unit_price_cents=unit_price_cents,
+                        created_at=datetime.now(),
+                        updated_at=datetime.now(),
+                    )
+                )
+            pl.updated_at = datetime.now()
+            session.commit()
+            flash("Позицію додано.", "success")
+    except Exception as e:
+        logger.log_error(f"Помилка додавання позиції у список {list_id}: {e}")
+        flash("Помилка додавання.", "danger")
+    return redirect(url_for("purchase_list_detail", list_id=list_id))
+
+
+@app.route("/warehouse/purchase_lists/<int:list_id>/items/<int:item_id>/update", methods=["POST"])
+@admin_required
+def purchase_list_update_item(list_id: int, item_id: int):
+    """Оновити кількість товару в списку."""
+    quantity = request.form.get("quantity", type=int)
+    unit_price_cents = _parse_money_to_cents(request.form.get("unit_price", ""))
+    if quantity is None or quantity < 1:
+        flash("Кількість має бути числом ≥ 1.", "danger")
+        return redirect(url_for("purchase_list_detail", list_id=list_id))
+    try:
+        with get_session() as session:
+            row = (
+                session.query(PurchaseListItem)
+                .filter(PurchaseListItem.purchase_list_id == list_id, PurchaseListItem.stock_item_id == item_id)
+                .first()
+            )
+            if not row:
+                flash("Позицію не знайдено.", "danger")
+                return redirect(url_for("purchase_list_detail", list_id=list_id))
+            row.quantity = quantity
+            row.unit_price_cents = unit_price_cents
+            row.updated_at = datetime.now()
+            pl = session.query(PurchaseList).filter(PurchaseList.id == list_id).first()
+            if pl:
+                pl.updated_at = datetime.now()
+            session.commit()
+            flash("Кількість оновлено.", "success")
+    except Exception as e:
+        logger.log_error(f"Помилка оновлення кількості у списку {list_id}: {e}")
+        flash("Помилка оновлення.", "danger")
+    return redirect(url_for("purchase_list_detail", list_id=list_id))
+
+
+@app.route("/warehouse/purchase_lists/<int:list_id>/items/<int:item_id>/remove", methods=["POST"])
+@admin_required
+def purchase_list_remove_item(list_id: int, item_id: int):
+    """Видалити товар зі списку."""
+    try:
+        with get_session() as session:
+            row = (
+                session.query(PurchaseListItem)
+                .filter(PurchaseListItem.purchase_list_id == list_id, PurchaseListItem.stock_item_id == item_id)
+                .first()
+            )
+            if not row:
+                flash("Позицію не знайдено.", "warning")
+                return redirect(url_for("purchase_list_detail", list_id=list_id))
+            session.delete(row)
+            pl = session.query(PurchaseList).filter(PurchaseList.id == list_id).first()
+            if pl:
+                pl.updated_at = datetime.now()
+            session.commit()
+            flash("Позицію видалено.", "success")
+    except Exception as e:
+        logger.log_error(f"Помилка видалення позиції зі списку {list_id}: {e}")
+        flash("Помилка видалення.", "danger")
+    return redirect(url_for("purchase_list_detail", list_id=list_id))
+
+
+@app.route("/dashboard/purchase_lists/<int:list_id>/items/<int:item_id>/remove", methods=["POST"])
+@admin_required
+def dashboard_remove_item_from_purchase_list(list_id: int, item_id: int):
+    """Застаріло: редагування з Dashboard вимкнено. Перенаправляємо в список."""
+    flash("Редагування з Dashboard вимкнено. Відкрийте список закупівлі.", "info")
+    return redirect(url_for("purchase_list_detail", list_id=list_id))
 
 
 @app.route('/ticket/<int:ticket_id>')
@@ -984,6 +1972,23 @@ def get_executor_candidates():
     return jsonify({'candidates': candidates})
 
 
+@app.route('/api/admin/new_tickets_count')
+@admin_required
+def api_new_tickets_count():
+    """API: кількість заявок зі статусом NEW (для дзвоника в шапці)."""
+    try:
+        with get_session() as session:
+            count = (
+                session.query(Ticket)
+                .filter(Ticket.status == 'NEW')
+                .count()
+            )
+        return jsonify({"new_tickets_count": int(count)})
+    except Exception as e:
+        logger.log_error(f"Помилка отримання кількості NEW заявок: {e}")
+        return jsonify({"new_tickets_count": 0}), 500
+
+
 @app.route('/ticket/<int:ticket_id>/change_status', methods=['POST'])
 @admin_required
 def change_ticket_status(ticket_id):
@@ -1009,6 +2014,61 @@ def change_ticket_status(ticket_id):
         flash('Помилка зміни статусу.', 'danger')
     
     return redirect(url_for('ticket_detail', ticket_id=ticket_id))
+
+
+@app.route('/tickets/bulk_change_status', methods=['POST'])
+@admin_required
+def bulk_change_ticket_status():
+    """Масова зміна статусу заявок (checkbox на сторінці заявок)."""
+    new_status = (request.form.get('status') or "").strip()
+    raw_ticket_ids = request.form.getlist('ticket_ids')
+
+    if not raw_ticket_ids:
+        flash('Не вибрано жодної заявки.', 'warning')
+        return redirect(request.referrer or url_for('tickets'))
+
+    if not new_status:
+        flash('Статус не вибрано.', 'warning')
+        return redirect(request.referrer or url_for('tickets'))
+
+    ticket_ids: list[int] = []
+    for v in raw_ticket_ids:
+        try:
+            ticket_ids.append(int(v))
+        except (ValueError, TypeError):
+            continue
+
+    if not ticket_ids:
+        flash('Не вибрано жодної заявки.', 'warning')
+        return redirect(request.referrer or url_for('tickets'))
+
+    ticket_manager = get_ticket_manager()
+
+    ok = 0
+    failed = 0
+    for tid in ticket_ids:
+        try:
+            if ticket_manager.change_status(
+                ticket_id=tid,
+                new_status=new_status,
+                admin_id=current_user.user_id,
+                admin_comment=None,
+            ):
+                ok += 1
+            else:
+                failed += 1
+        except Exception as e:
+            failed += 1
+            logger.log_error(f"Помилка bulk зміни статусу для заявки {tid}: {e}")
+
+    if ok and not failed:
+        flash(f'Статус змінено для {ok} заявок.', 'success')
+    elif ok and failed:
+        flash(f'Статус змінено для {ok} заявок; помилки: {failed}.', 'warning')
+    else:
+        flash('Не вдалося змінити статус для вибраних заявок.', 'danger')
+
+    return redirect(request.referrer or url_for('tickets'))
 
 
 @app.route('/ticket/<int:ticket_id>/change_priority', methods=['POST'])

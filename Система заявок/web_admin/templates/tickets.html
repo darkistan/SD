@@ -16,6 +16,36 @@
     </div>
 </div>
 
+{% if is_admin %}
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body d-flex flex-wrap align-items-end gap-2">
+                <div>
+                    <label class="form-label mb-1">Масова дія</label>
+                    <div class="small text-muted">Працює для заявок, вибраних “галочками” на цій сторінці</div>
+                </div>
+                <div class="ms-auto d-flex flex-wrap align-items-end gap-2">
+                    <div>
+                        <label class="form-label mb-1">Новий статус</label>
+                        <select class="form-select form-select-sm" id="bulkStatusSelect">
+                            <option value="">— виберіть —</option>
+                            {% for status in all_statuses %}
+                            <option value="{{ status.code }}">{{ status.name_ua }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button class="btn btn-sm btn-warning" id="bulkChangeStatusBtn" disabled>
+                        <i class="bi bi-arrow-repeat"></i> Змінити статус
+                    </button>
+                    <span class="badge bg-secondary" id="bulkSelectedCount">0</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <div class="row mb-3">
     <div class="col-12">
         <div class="card">
@@ -110,10 +140,20 @@
         <div class="card">
             <div class="card-body">
                 {% if tickets %}
+                {% if is_admin %}
+                <form method="POST" action="{{ url_for('bulk_change_ticket_status') }}" id="bulkChangeStatusForm">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="status" id="bulkStatusInput" value=""/>
+                {% endif %}
                 <div class="table-responsive">
                     <table class="table table-striped">
                         <thead>
                             <tr>
+                                {% if is_admin %}
+                                <th style="width: 2.5rem;">
+                                    <input class="form-check-input" type="checkbox" id="ticketsSelectAll" aria-label="Вибрати всі заявки на сторінці">
+                                </th>
+                                {% endif %}
                                 <th>
                                     {% if sort_by == 'id' %}
                                         {% set next_order_id = 'asc' if sort_order == 'desc' else 'desc' %}
@@ -190,6 +230,17 @@
                         <tbody>
                             {% for ticket in tickets %}
                             <tr {% if ticket.status == 'CLOSED' or ticket.status == 'CANCELLED' %}class="ticket-closed"{% elif ticket.chat_is_active %}class="table-info"{% elif ticket.executor_id %}class="table-warning"{% endif %}>
+                                {% if is_admin %}
+                                <td>
+                                    <input
+                                        class="form-check-input ticket-select"
+                                        type="checkbox"
+                                        name="ticket_ids"
+                                        value="{{ ticket.id }}"
+                                        aria-label="Вибрати заявку #{{ ticket.id }}"
+                                    >
+                                </td>
+                                {% endif %}
                                 <td>
                                     #{{ ticket.id }}
                                     {% if ticket.chat_is_active %}
@@ -263,6 +314,9 @@
                         </tbody>
                     </table>
                 </div>
+                {% if is_admin %}
+                </form>
+                {% endif %}
                 
                 {% if total_pages > 1 %}
                 <nav aria-label="Навігація по сторінкам">
@@ -316,6 +370,35 @@
         </div>
     </div>
 </div>
+
+{% if is_admin %}
+<!-- Modal підтвердження масової зміни статусу -->
+<div class="modal fade" id="bulkChangeStatusModal" tabindex="-1" aria-labelledby="bulkChangeStatusModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="bulkChangeStatusModalLabel">Підтвердіть зміну статусу</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрити"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-2">
+            Буде змінено статус для <strong><span id="bulkModalCount">0</span></strong> заявок.
+        </div>
+        <div>
+            Новий статус: <strong><span id="bulkModalStatusLabel">—</span></strong>
+        </div>
+        <div class="small text-muted mt-2">Порада: якщо помилилися — скасуйте і перевірте вибір.</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Скасувати</button>
+        <button type="button" class="btn btn-warning" id="bulkModalConfirmBtn">
+            <i class="bi bi-check2"></i> Так, змінити
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 <style>
 .ticket-closed {
@@ -420,6 +503,76 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
+
+    // Масова зміна статусу (тільки для адміна)
+    const bulkForm = document.getElementById('bulkChangeStatusForm');
+    if (bulkForm) {
+        const selectAll = document.getElementById('ticketsSelectAll');
+        const statusSelect = document.getElementById('bulkStatusSelect');
+        const statusInput = document.getElementById('bulkStatusInput');
+        const actionBtn = document.getElementById('bulkChangeStatusBtn');
+        const selectedCountBadge = document.getElementById('bulkSelectedCount');
+
+        const modalEl = document.getElementById('bulkChangeStatusModal');
+        const modalCountEl = document.getElementById('bulkModalCount');
+        const modalStatusLabelEl = document.getElementById('bulkModalStatusLabel');
+        const modalConfirmBtn = document.getElementById('bulkModalConfirmBtn');
+
+        const checkboxes = Array.from(document.querySelectorAll('.ticket-select'));
+
+        function getSelectedCount() {
+            return checkboxes.filter(cb => cb.checked).length;
+        }
+
+        function updateUI() {
+            const selected = getSelectedCount();
+            const hasStatus = Boolean(statusSelect && statusSelect.value);
+            if (selectedCountBadge) selectedCountBadge.textContent = String(selected);
+            if (actionBtn) actionBtn.disabled = !(selected > 0 && hasStatus);
+            if (selectAll) {
+                const allChecked = selected > 0 && selected === checkboxes.length;
+                const noneChecked = selected === 0;
+                selectAll.checked = allChecked;
+                selectAll.indeterminate = !allChecked && !noneChecked;
+            }
+        }
+
+        if (selectAll) {
+            selectAll.addEventListener('change', function() {
+                const checked = Boolean(this.checked);
+                checkboxes.forEach(cb => { cb.checked = checked; });
+                updateUI();
+            });
+        }
+
+        checkboxes.forEach(cb => cb.addEventListener('change', updateUI));
+        if (statusSelect) statusSelect.addEventListener('change', updateUI);
+
+        if (actionBtn && modalEl) {
+            const modal = new bootstrap.Modal(modalEl);
+            actionBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                const selected = getSelectedCount();
+                const statusVal = statusSelect ? statusSelect.value : '';
+                const statusLabel = statusSelect ? (statusSelect.options[statusSelect.selectedIndex]?.text || '—') : '—';
+                if (selected <= 0 || !statusVal) return;
+                if (modalCountEl) modalCountEl.textContent = String(selected);
+                if (modalStatusLabelEl) modalStatusLabelEl.textContent = statusLabel;
+                modal.show();
+            });
+
+            if (modalConfirmBtn) {
+                modalConfirmBtn.addEventListener('click', function() {
+                    const statusVal = statusSelect ? statusSelect.value : '';
+                    if (!statusVal) return;
+                    if (statusInput) statusInput.value = statusVal;
+                    bulkForm.submit();
+                });
+            }
+        }
+
+        updateUI();
+    }
 });
 </script>
 {% endblock %}

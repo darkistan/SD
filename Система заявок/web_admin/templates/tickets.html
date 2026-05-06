@@ -141,9 +141,7 @@
             <div class="card-body">
                 {% if tickets %}
                 {% if is_admin %}
-                <form method="POST" action="{{ url_for('bulk_change_ticket_status') }}" id="bulkChangeStatusForm">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                    <input type="hidden" name="status" id="bulkStatusInput" value=""/>
+                <input type="hidden" id="bulkCsrfToken" value="{{ csrf_token() }}"/>
                 {% endif %}
                 <div class="table-responsive">
                     <table class="table table-striped">
@@ -276,9 +274,13 @@
                                 {% if is_admin %}
                                 <td>
                                     <div class="d-flex align-items-center gap-2">
-                                        <form method="POST" action="{{ url_for('assign_executor', ticket_id=ticket.id) }}" class="d-inline-flex align-items-center" style="min-width: 200px;">
-                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                            <select name="executor_id" class="form-select form-select-sm" onchange="this.form.submit()">
+                                        <div class="d-inline-flex align-items-center" style="min-width: 200px;">
+                                            <select
+                                                name="executor_id"
+                                                class="form-select form-select-sm js-assign-executor"
+                                                data-assign-url="{{ url_for('assign_executor', ticket_id=ticket.id) }}"
+                                                data-csrf-token="{{ csrf_token() }}"
+                                            >
                                                 <option value="">Не призначено</option>
                                                 {% for candidate in executor_candidates %}
                                                 <option value="{{ candidate.user_id }}" {% if ticket.executor_id == candidate.user_id %}selected{% endif %}>
@@ -286,7 +288,7 @@
                                                 </option>
                                                 {% endfor %}
                                             </select>
-                                        </form>
+                                        </div>
                                         {% if ticket.executor_id %}
                                         <form method="POST" action="{{ url_for('remove_executor', ticket_id=ticket.id) }}" class="d-inline">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
@@ -315,7 +317,6 @@
                     </table>
                 </div>
                 {% if is_admin %}
-                </form>
                 {% endif %}
                 
                 {% if total_pages > 1 %}
@@ -505,11 +506,10 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Масова зміна статусу (тільки для адміна)
-    const bulkForm = document.getElementById('bulkChangeStatusForm');
-    if (bulkForm) {
+    const bulkCsrfTokenEl = document.getElementById('bulkCsrfToken');
+    if (bulkCsrfTokenEl) {
         const selectAll = document.getElementById('ticketsSelectAll');
         const statusSelect = document.getElementById('bulkStatusSelect');
-        const statusInput = document.getElementById('bulkStatusInput');
         const actionBtn = document.getElementById('bulkChangeStatusBtn');
         const selectedCountBadge = document.getElementById('bulkSelectedCount');
 
@@ -562,17 +562,63 @@ document.addEventListener('DOMContentLoaded', function() {
             });
 
             if (modalConfirmBtn) {
-                modalConfirmBtn.addEventListener('click', function() {
+                modalConfirmBtn.addEventListener('click', async function() {
                     const statusVal = statusSelect ? statusSelect.value : '';
                     if (!statusVal) return;
-                    if (statusInput) statusInput.value = statusVal;
-                    bulkForm.submit();
+                    const csrfToken = bulkCsrfTokenEl ? bulkCsrfTokenEl.value : '';
+
+                    const formData = new FormData();
+                    formData.append('csrf_token', csrfToken);
+                    formData.append('status', statusVal);
+                    checkboxes
+                        .filter(cb => cb.checked)
+                        .forEach(cb => formData.append('ticket_ids', cb.value));
+
+                    try {
+                        const res = await fetch('{{ url_for("bulk_change_ticket_status") }}', {
+                            method: 'POST',
+                            body: formData,
+                            credentials: 'same-origin'
+                        });
+                        if (res.ok) {
+                            window.location.reload();
+                        } else {
+                            window.location.reload();
+                        }
+                    } catch (e) {
+                        window.location.reload();
+                    }
                 });
             }
         }
 
         updateUI();
     }
+
+    // Призначення виконавця (уникаємо вкладених form у таблиці)
+    document.querySelectorAll('.js-assign-executor').forEach(select => {
+        select.addEventListener('change', async function() {
+            const url = this.dataset.assignUrl;
+            const csrfToken = this.dataset.csrfToken || '';
+            const executorId = this.value || '';
+            if (!url || !executorId) return;
+
+            const formData = new FormData();
+            formData.append('csrf_token', csrfToken);
+            formData.append('executor_id', executorId);
+
+            try {
+                const res = await fetch(url, { method: 'POST', body: formData, credentials: 'same-origin' });
+                if (res.ok) {
+                    window.location.reload();
+                } else {
+                    window.location.reload();
+                }
+            } catch (e) {
+                window.location.reload();
+            }
+        });
+    });
 });
 </script>
 {% endblock %}

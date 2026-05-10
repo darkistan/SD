@@ -73,7 +73,7 @@
                 <th>Список</th>
                 <th style="width: 220px;">Статус</th>
                 <th style="width: 120px;">Позицій</th>
-                <th style="width: 160px;">Дії</th>
+                <th style="width: 240px;">Дії</th>
               </tr>
             </thead>
             <tbody>
@@ -122,6 +122,22 @@
                   </div>
                   {% if pl.items_count > 0 %}
                   <div class="small text-muted mt-1">Видалення вимкнено: список не порожній</div>
+                  <form method="POST" action="{{ url_for('warehouse_purchase_list_create_todo', list_id=pl.id) }}" class="mt-2 d-flex flex-wrap gap-1 align-items-center" onsubmit="return confirm('Створити задачу TO DO зі списку «{{ pl.title }}»?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="origin" value="lists"/>
+                    <input type="hidden" name="return_page" value="{{ page }}"/>
+                    <input type="hidden" name="return_page_done" value="{{ page_done }}"/>
+                    <label class="visually-hidden" for="todoListSelect{{ pl.id }}">Список TO DO</label>
+                    <select id="todoListSelect{{ pl.id }}" name="todo_list_name" class="form-select form-select-sm" style="min-width: 120px; max-width: 200px;">
+                      <option value="">Без списку</option>
+                      {% for name in todo_lists %}
+                      <option value="{{ name }}">{{ name }}</option>
+                      {% endfor %}
+                    </select>
+                    <button type="submit" class="btn btn-sm btn-outline-secondary" title="Створити задачу TO DO">
+                      <i class="bi bi-list-task"></i>
+                    </button>
+                  </form>
                   {% endif %}
                 </td>
               </tr>

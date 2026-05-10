@@ -294,7 +294,7 @@
                                                 {{ task.title }}
                                             </a>
                                             {% if task.notes %}
-                                            <br><small class="text-muted">{{ task.notes[:100] }}{% if task.notes|length > 100 %}...{% endif %}</small>
+                                            <br><small class="text-muted text-break" style="white-space: pre-line;">{{ task.notes|urlize }}</small>
                                             {% endif %}
                                         </div>
                                     </div>
@@ -562,7 +562,7 @@
                                                         {{ task.title }}
                                                     </a>
                                                     {% if task.notes %}
-                                                    <br><small class="text-muted">{{ task.notes[:100] }}{% if task.notes|length > 100 %}...{% endif %}</small>
+                                                    <br><small class="text-muted text-break" style="white-space: pre-line;">{{ task.notes|urlize }}</small>
                                                     {% endif %}
                                                     {% if task.recurrence_type %}
                                                     <span class="badge bg-info ms-1" title="Повторюване завдання">
@@ -710,7 +710,7 @@
                                                         {{ task.title }}
                                                     </a>
                                                     {% if task.notes %}
-                                                    <br><small class="text-muted">{{ task.notes[:100] }}{% if task.notes|length > 100 %}...{% endif %}</small>
+                                                    <br><small class="text-muted text-break" style="white-space: pre-line;">{{ task.notes|urlize }}</small>
                                                     {% endif %}
                                                     {% if task.recurrence_type %}
                                                     <span class="badge bg-info ms-1" title="Повторюване завдання">
@@ -858,7 +858,7 @@
                                                         {{ task.title }}
                                                     </a>
                                                     {% if task.notes %}
-                                                    <br><small class="text-muted">{{ task.notes[:100] }}{% if task.notes|length > 100 %}...{% endif %}</small>
+                                                    <br><small class="text-muted text-break" style="white-space: pre-line;">{{ task.notes|urlize }}</small>
                                                     {% endif %}
                                                     {% if task.recurrence_type %}
                                                     <span class="badge bg-info ms-1" title="Повторюване завдання">
@@ -1006,7 +1006,7 @@
                                                         {{ task.title }}
                                                     </a>
                                                     {% if task.notes %}
-                                                    <br><small class="text-muted">{{ task.notes[:100] }}{% if task.notes|length > 100 %}...{% endif %}</small>
+                                                    <br><small class="text-muted text-break" style="white-space: pre-line;">{{ task.notes|urlize }}</small>
                                                     {% endif %}
                                                     {% if task.recurrence_type %}
                                                     <span class="badge bg-info ms-1" title="Повторюване завдання">
@@ -1173,7 +1173,7 @@
                                                     {{ task.title }}
                                                 </a>
                                                 {% if task.notes %}
-                                                <br><small class="text-muted">{{ task.notes[:100] }}{% if task.notes|length > 100 %}...{% endif %}</small>
+                                                <br><small class="text-muted text-break" style="white-space: pre-line;">{{ task.notes|urlize }}</small>
                                                 {% endif %}
                                                 {% if task.recurrence_type %}
                                                 <span class="badge bg-info ms-1" title="Повторюване завдання">

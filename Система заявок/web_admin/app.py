@@ -843,6 +843,20 @@ PURCHASE_LIST_STATUS_BADGES = {
 }
 
 
+def _build_purchase_list_todo_notes(pl: PurchaseList) -> str:
+    """Нотатки TO DO: лише посилання на сторінку списку (деталі переглядаються там, не в переліку задач)."""
+    path = url_for("purchase_list_detail", list_id=pl.id)
+    root = (getattr(request, "url_root", None) or "").rstrip("/")
+    href = f"{root}{path}" if root else path
+    return f"Перегляд і редагування списку закупівлі:\n{href}"
+
+
+def _sorted_todo_list_names() -> list[str]:
+    """Унікальні назви списків TO DO для select (алфавіт)."""
+    names = get_task_manager().get_all_lists()
+    return sorted({n for n in names if n})
+
+
 @app.route("/warehouse")
 @admin_required
 def warehouse():
@@ -1265,6 +1279,7 @@ def warehouse_purchase_lists():
         total_pages_done=meta_d["total_pages"],
         total_done_lists=total_done,
         done_end_index=meta_d["end_index"],
+        todo_lists=_sorted_todo_list_names(),
     )
 
 
@@ -1413,6 +1428,74 @@ def warehouse_delete_purchase_list(list_id: int):
     return _redirect_warehouse_purchase_lists_from_form()
 
 
+@app.route("/warehouse/purchase_lists/<int:list_id>/todo", methods=["POST"])
+@admin_required
+def warehouse_purchase_list_create_todo(list_id: int):
+    """Створити задачу TO DO з повним змістом списку закупівлі."""
+    origin = (request.form.get("origin") or "detail").strip()
+    if origin not in ("detail", "lists"):
+        origin = "detail"
+
+    allowed = set(get_task_manager().get_all_lists())
+    raw_list = (request.form.get("todo_list_name") or "").strip()
+    if raw_list and raw_list not in allowed:
+        flash("Невірна назва списку TO DO.", "danger")
+        if origin == "lists":
+            return _redirect_warehouse_purchase_lists_from_form()
+        return redirect(url_for("purchase_list_detail", list_id=list_id))
+
+    todo_list_name: Optional[str] = raw_list if raw_list else None
+
+    def _back_on_error() -> Response:
+        if origin == "lists":
+            return _redirect_warehouse_purchase_lists_from_form()
+        return redirect(url_for("purchase_list_detail", list_id=list_id))
+
+    title: str = ""
+    notes: str = ""
+
+    try:
+        with get_session() as session:
+            pl = session.query(PurchaseList).filter(PurchaseList.id == list_id).first()
+            if not pl:
+                flash("Список не знайдено.", "danger")
+                if origin == "lists":
+                    return _redirect_warehouse_purchase_lists_from_form()
+                return redirect(url_for("warehouse_purchase_lists"))
+
+            cnt = session.query(PurchaseListItem).filter(PurchaseListItem.purchase_list_id == list_id).count()
+            if cnt == 0:
+                flash("У списку немає позицій — задачу не створено.", "warning")
+                return _back_on_error()
+
+            notes = _build_purchase_list_todo_notes(pl)
+            title = f"Закупівля: {pl.title or 'без назви'}"
+            if len(title) > 500:
+                title = title[:497] + "..."
+    except Exception as e:
+        logger.log_error(f"Помилка підготовки TO DO зі списку закупівлі {list_id}: {e}")
+        flash("Помилка підготовки задачі TO DO.", "danger")
+        return _back_on_error()
+
+    task_id = get_task_manager().create_task(
+        title=title,
+        notes=notes,
+        due_date=None,
+        list_name=todo_list_name,
+        recurrence_type=None,
+        user_id=current_user.user_id,
+    )
+    if not task_id:
+        flash("Не вдалося створити задачу TO DO.", "danger")
+        return _back_on_error()
+
+    flash("Задачу в TO DO створено.", "success")
+    todo_kw: dict = {"filter": "all"}
+    if todo_list_name:
+        todo_kw["list_filter"] = todo_list_name
+    return redirect(url_for("todo", **todo_kw))
+
+
 @app.route("/warehouse/purchase_lists/<int:list_id>")
 @admin_required
 def purchase_list_detail(list_id: int):
@@ -1481,6 +1564,7 @@ def purchase_list_detail(list_id: int):
         purchase_list=purchase_list,
         stock_items=stock_items,
         items=items,
+        todo_lists=_sorted_todo_list_names(),
     )
 
 

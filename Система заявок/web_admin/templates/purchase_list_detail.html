@@ -26,6 +26,40 @@
 
 <div class="row mb-3">
   <div class="col-12">
+    <div class="card border-secondary">
+      <div class="card-header py-2">
+        <h6 class="mb-0"><i class="bi bi-list-task"></i> Задача TO DO</h6>
+      </div>
+      <div class="card-body py-3">
+        {% if items|length > 0 %}
+        <form method="POST" action="{{ url_for('warehouse_purchase_list_create_todo', list_id=purchase_list.id) }}" class="row g-2 align-items-end" onsubmit="return confirm('Створити задачу TO DO з цього списку закупівлі?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+          <input type="hidden" name="origin" value="detail"/>
+          <div class="col-12 col-md-5 col-lg-4">
+            <label class="form-label mb-1">Список у TO DO</label>
+            <select name="todo_list_name" class="form-select">
+              <option value="">Без списку</option>
+              {% for name in todo_lists %}
+              <option value="{{ name }}">{{ name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-md-auto">
+            <button type="submit" class="btn btn-outline-secondary">
+              <i class="bi bi-list-task"></i> Створити задачу
+            </button>
+          </div>
+        </form>
+        {% else %}
+        <p class="text-muted mb-0 small">Додайте хоча б одну позицію, щоб створити задачу TO DO.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row mb-3">
+  <div class="col-12">
     <div class="card">
       <div class="card-header">
         <h5 class="mb-0">Додати товар у список</h5>

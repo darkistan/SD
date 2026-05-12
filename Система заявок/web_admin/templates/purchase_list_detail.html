@@ -20,6 +20,9 @@
       <a class="btn btn-outline-primary" href="{{ url_for('warehouse_purchase_lists') }}">
         <i class="bi bi-arrow-left"></i> До списків
       </a>
+      <a class="btn btn-primary" href="{{ url_for('purchase_list_pdf', list_id=purchase_list.id) }}" target="_blank" rel="noopener noreferrer">
+        <i class="bi bi-file-pdf"></i> PDF для друку
+      </a>
     </div>
   </div>
 </div>

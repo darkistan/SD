@@ -147,5 +147,234 @@
         </div>
     </div>
 </div>
+
+<div class="row">
+    <div class="col-12 mb-4">
+        <div class="card border-primary">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="bi bi-calculator"></i> Кошторис витрат (PDF)</h5>
+            </div>
+            <div class="card-body">
+                <form id="budget-report-form" method="POST" action="{{ url_for('generate_budget_pdf') }}" target="_blank">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="budget_rows_json" id="budget_rows_json" value="[]"/>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Компанія (довідник)</label>
+                            <select name="budget_company_id" id="budget_company_id" class="form-select">
+                                <option value="">— Не обрано —</option>
+                                {% for company in companies %}
+                                <option value="{{ company.id }}">{{ company.name }}</option>
+                                {% endfor %}
+                            </select>
+                            <small class="text-muted">Якщо обрано — у PDF підставляється назва з довідника; ручне поле нижче вимкнено.</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Підприємство (вручну)</label>
+                            <input type="text" name="budget_enterprise_manual" id="budget_enterprise_manual" class="form-control" maxlength="300" placeholder="Якщо компанію не обрано — обов'язково"/>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Період з <span class="text-danger">*</span></label>
+                            <input type="date" name="budget_period_start" id="budget_period_start" class="form-control" required/>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Період по <span class="text-danger">*</span></label>
+                            <input type="date" name="budget_period_end" id="budget_period_end" class="form-control" required/>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Дата документа <span class="text-danger">*</span></label>
+                            <input type="date" name="budget_document_date" id="budget_document_date" class="form-control" required/>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label d-flex justify-content-between align-items-center">
+                            <span>1. Заплановані витрати</span>
+                            <span>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="budget-add-row">+ Рядок</button>
+                            </span>
+                        </label>
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-sm align-middle" id="budget-expense-table">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width:3rem">№</th>
+                                        <th>Стаття витрат</th>
+                                        <th>Призначення</th>
+                                        <th style="width:8rem">Сума, грн</th>
+                                        <th style="width:3rem"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="budget-expense-tbody"></tbody>
+                            </table>
+                        </div>
+                        <div class="row g-2 align-items-end mt-2">
+                            <div class="col-md-8">
+                                <label class="form-label">Додати рядок зі списку закупівлі</label>
+                                <select id="budget-purchase-list-select" class="form-select">
+                                    <option value="">— Оберіть список (не DONE) —</option>
+                                    {% for pl in purchase_lists_budget|default([]) %}
+                                    <option value="{{ pl.id }}" data-title="{{ pl.title | e }}" data-total-uah="{{ '%.2f' % pl.total_uah }}">{{ pl.title }} ({{ '%.2f' % pl.total_uah }} грн)</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <button type="button" class="btn btn-outline-primary w-100" id="budget-add-from-pl">Додати зі списку</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">2. Обґрунтування</label>
+                        <textarea name="budget_justification" id="budget_justification" class="form-control" rows="4" maxlength="10000">{{ default_budget_justification }}</textarea>
+                        <button type="button" class="btn btn-link btn-sm px-0" id="budget-reset-justification">Скинути текст за замовчуванням</button>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary" id="budget-submit-pdf">
+                        <i class="bi bi-file-pdf"></i> Згенерувати PDF
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const DEFAULT_JUSTIFICATION = {{ default_budget_justification | tojson }};
+  const tbody = document.getElementById("budget-expense-tbody");
+  const hiddenJson = document.getElementById("budget_rows_json");
+  const companySel = document.getElementById("budget_company_id");
+  const manualEnt = document.getElementById("budget_enterprise_manual");
+
+  function syncManualEnterpriseState() {
+    if (!manualEnt || !companySel) return;
+    if (companySel.value) {
+      manualEnt.disabled = true;
+      manualEnt.value = "";
+      manualEnt.placeholder = "Недоступно: обрано компанію з довідника";
+    } else {
+      manualEnt.disabled = false;
+      manualEnt.placeholder = "Якщо компанію не обрано — обов'язково";
+    }
+  }
+
+  function rowTemplate(idx) {
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      '<td class="text-center budget-idx">' +
+      idx +
+      "</td>" +
+      '<td><input type="text" class="form-control form-control-sm budget-article" maxlength="500" required/></td>' +
+      '<td><input type="text" class="form-control form-control-sm budget-purpose" maxlength="2000"/></td>' +
+      '<td><input type="number" class="form-control form-control-sm budget-amount" min="0" step="0.01" required/></td>' +
+      '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger budget-del-row" title="Видалити">&times;</button></td>';
+    return tr;
+  }
+
+  function renumberRows() {
+    if (!tbody) return;
+    let n = 1;
+    tbody.querySelectorAll("tr").forEach((tr) => {
+      const c = tr.querySelector(".budget-idx");
+      if (c) c.textContent = String(n++);
+    });
+  }
+
+  function addEmptyRow() {
+    if (!tbody) return;
+    const tr = rowTemplate(tbody.querySelectorAll("tr").length + 1);
+    tbody.appendChild(tr);
+    tr.querySelector(".budget-del-row").addEventListener("click", () => {
+      tr.remove();
+      renumberRows();
+    });
+    renumberRows();
+  }
+
+  function collectRows() {
+    const rows = [];
+    if (!tbody) return rows;
+    tbody.querySelectorAll("tr").forEach((tr) => {
+      const article = (tr.querySelector(".budget-article") && tr.querySelector(".budget-article").value) || "";
+      const purpose = (tr.querySelector(".budget-purpose") && tr.querySelector(".budget-purpose").value) || "";
+      const amountRaw = (tr.querySelector(".budget-amount") && tr.querySelector(".budget-amount").value) || "";
+      rows.push({ article: article.trim(), purpose: purpose.trim(), amount: amountRaw.trim() });
+    });
+    return rows;
+  }
+
+  if (companySel) companySel.addEventListener("change", syncManualEnterpriseState);
+
+  document.getElementById("budget-add-row")?.addEventListener("click", () => addEmptyRow());
+
+  document.getElementById("budget-add-from-pl")?.addEventListener("click", () => {
+    const sel = document.getElementById("budget-purchase-list-select");
+    if (!sel || sel.selectedIndex <= 0) {
+      window.alert("Оберіть список закупівлі.");
+      return;
+    }
+    const opt = sel.options[sel.selectedIndex];
+    const title = (opt.getAttribute("data-title") || "").trim();
+    const total = (opt.getAttribute("data-total-uah") || "0").trim();
+    if (!title) return;
+    addEmptyRow();
+    const firstTr = tbody.querySelector("tr:last-child");
+    if (!firstTr) return;
+    const a = firstTr.querySelector(".budget-article");
+    const p = firstTr.querySelector(".budget-purpose");
+    const m = firstTr.querySelector(".budget-amount");
+    if (a) a.value = title;
+    if (p) p.value = "";
+    if (m) m.value = total;
+    sel.selectedIndex = 0;
+  });
+
+  document.getElementById("budget-reset-justification")?.addEventListener("click", () => {
+    const ta = document.getElementById("budget_justification");
+    if (ta) ta.value = DEFAULT_JUSTIFICATION;
+  });
+
+  document.getElementById("budget-report-form")?.addEventListener("submit", (ev) => {
+    const cid = (companySel && companySel.value) || "";
+    const manual = (manualEnt && manualEnt.value.trim()) || "";
+    if (!cid && !manual) {
+      ev.preventDefault();
+      window.alert("Оберіть компанію з довідника або введіть назву підприємства вручну.");
+      return;
+    }
+    const rows = collectRows().filter((r) => r.article || r.purpose || r.amount);
+    if (!rows.length) {
+      ev.preventDefault();
+      window.alert("Додайте хоча б один рядок у таблицю витрат.");
+      return;
+    }
+    for (let i = 0; i < rows.length; i++) {
+      if (!rows[i].article) {
+        ev.preventDefault();
+        window.alert("У кожному рядку заповніть «Стаття витрат».");
+        return;
+      }
+      if (rows[i].amount === "" || Number.isNaN(parseFloat(rows[i].amount.replace(",", ".")))) {
+        ev.preventDefault();
+        window.alert("У кожному рядку вкажіть коректну суму.");
+        return;
+      }
+    }
+    const normalized = rows.map((r) => ({
+      article: r.article,
+      purpose: r.purpose,
+      amount: parseFloat(String(r.amount).replace(",", ".")),
+    }));
+    if (hiddenJson) hiddenJson.value = JSON.stringify(normalized);
+  });
+
+  syncManualEnterpriseState();
+  addEmptyRow();
+})();
+</script>
 {% endblock %}
 

@@ -108,6 +108,9 @@
                     <a class="btn btn-outline-primary" href="{{ url_for('purchase_list_detail', list_id=pl.id) }}" title="Відкрити список">
                       <i class="bi bi-box-arrow-in-right"></i>
                     </a>
+                    <a class="btn btn-outline-danger" href="{{ url_for('purchase_list_pdf', list_id=pl.id) }}" target="_blank" rel="noopener noreferrer" title="PDF для друку">
+                      <i class="bi bi-file-pdf"></i>
+                    </a>
                     <button class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#editPurchaseListModal{{ pl.id }}" title="Редагувати">
                       <i class="bi bi-pencil"></i>
                     </button>
@@ -288,9 +291,14 @@
                 <td class="text-nowrap small">{{ pl.done_at_label }}</td>
                 <td><span class="badge bg-secondary">{{ pl.items_count }}</span></td>
                 <td>
-                  <a class="btn btn-sm btn-outline-primary" href="{{ url_for('purchase_list_detail', list_id=pl.id) }}">
-                    <i class="bi bi-box-arrow-in-right"></i>
-                  </a>
+                  <div class="btn-group btn-group-sm" role="group">
+                    <a class="btn btn-outline-primary" href="{{ url_for('purchase_list_detail', list_id=pl.id) }}" title="Відкрити">
+                      <i class="bi bi-box-arrow-in-right"></i>
+                    </a>
+                    <a class="btn btn-outline-danger" href="{{ url_for('purchase_list_pdf', list_id=pl.id) }}" target="_blank" rel="noopener noreferrer" title="PDF для друку">
+                      <i class="bi bi-file-pdf"></i>
+                    </a>
+                  </div>
                 </td>
               </tr>
               {% endfor %}

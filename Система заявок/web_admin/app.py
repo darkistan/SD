@@ -43,6 +43,7 @@ from web_admin.quote_calc import (
     quote_calc_save_prices,
     quote_calc_validate_prices,
 )
+from budget_report import validate_budget_form, DEFAULT_BUDGET_JUSTIFICATION
 
 # Завантажуємо змінні середовища
 load_dotenv("config.env")
@@ -1566,6 +1567,19 @@ def purchase_list_detail(list_id: int):
         items=items,
         todo_lists=_sorted_todo_list_names(),
     )
+
+
+@app.get("/warehouse/purchase_lists/<int:list_id>/pdf")
+@admin_required
+def purchase_list_pdf(list_id: int):
+    """PDF списку закупівлі для друку (повні реквізити та позиції)."""
+    pdf_manager = get_pdf_report_manager()
+    pdf_buffer = pdf_manager.generate_purchase_list_pdf(list_id)
+    if pdf_buffer is None:
+        flash("Список не знайдено.", "danger")
+        return redirect(url_for("warehouse_purchase_lists"))
+    fname = f"zakupivlya_list_{list_id}_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
+    return send_file(pdf_buffer, mimetype="application/pdf", download_name=fname)
 
 
 @app.route("/warehouse/purchase_lists/<int:list_id>/items/add", methods=["POST"])
@@ -3758,12 +3772,44 @@ def reports():
             {'id': c.id, 'name': c.name, 'service_types': c.service_types}
             for c in contractors_list
         ]
-    
+        purchase_lists_budget = []
+        pls = (
+            session.query(PurchaseList)
+            .filter(PurchaseList.status != "DONE")
+            .order_by(PurchaseList.title.asc())
+            .all()
+        )
+        for pl in pls:
+            total_cents = (
+                session.query(
+                    func.coalesce(
+                        func.sum(PurchaseListItem.quantity * PurchaseListItem.unit_price_cents),
+                        0,
+                    )
+                )
+                .filter(PurchaseListItem.purchase_list_id == pl.id)
+                .scalar()
+            )
+            purchase_lists_budget.append(
+                {
+                    "id": pl.id,
+                    "title": pl.title,
+                    "total_uah": (int(total_cents or 0)) / 100.0,
+                }
+            )
+
     # Отримуємо список статусів для фільтра
     status_manager = get_status_manager()
     all_statuses = status_manager.get_all_statuses(active_only=True)
-    
-    return render_template('reports.html', companies=companies, contractors=contractors, all_statuses=all_statuses)
+
+    return render_template(
+        "reports.html",
+        companies=companies,
+        contractors=contractors,
+        all_statuses=all_statuses,
+        purchase_lists_budget=purchase_lists_budget,
+        default_budget_justification=DEFAULT_BUDGET_JUSTIFICATION,
+    )
 
 
 @app.route('/admin/quote-calculator')
@@ -4048,6 +4094,37 @@ def generate_pdf_report():
     
     flash('Невідомий тип звіту.', 'danger')
     return redirect(url_for('reports'))
+
+
+@app.post("/reports/generate-budget-pdf")
+@admin_required
+def generate_budget_pdf():
+    """Генерація PDF «Кошторис витрат» за даними форми."""
+    company_id_raw = request.form.get("budget_company_id", "").strip()
+    enterprise_manual = request.form.get("budget_enterprise_manual", "")
+    period_start = request.form.get("budget_period_start", "")
+    period_end = request.form.get("budget_period_end", "")
+    document_date = request.form.get("budget_document_date", "")
+    justification = request.form.get("budget_justification", "")
+    rows_json = request.form.get("budget_rows_json", "[]")
+
+    ok, err, payload = validate_budget_form(
+        company_id_raw=company_id_raw or None,
+        enterprise_manual=enterprise_manual,
+        period_start_raw=period_start,
+        period_end_raw=period_end,
+        document_date_raw=document_date,
+        justification=justification,
+        rows_json=rows_json,
+    )
+    if not ok:
+        flash(err, "danger")
+        return redirect(url_for("reports"))
+
+    pdf_manager = get_pdf_report_manager()
+    pdf_buffer = pdf_manager.generate_budget_cost_pdf(payload)
+    fname = f"koshtorys_vytrat_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
+    return send_file(pdf_buffer, mimetype="application/pdf", download_name=fname)
 
 
 # Error handlers

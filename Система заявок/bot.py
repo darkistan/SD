@@ -4,6 +4,7 @@ Telegram бот для системи заявок на заправку кар�
 """
 import os
 import sys
+import html
 import asyncio
 import logging
 import warnings
@@ -57,6 +58,8 @@ TASKS_PER_PAGE = 5  # Кількість задач на сторінку
 TICKETS_PER_PAGE = 5  # Кількість заявок на сторінку
 LISTS_PER_PAGE = 10  # Кількість списків на сторінку (2 колонки по 5)
 NOTES_PER_PAGE = 10  # Кількість нотаток на сторінку
+TELEGRAM_MESSAGE_LIMIT = 4096
+NOTE_CONTENT_CHUNK_SIZE = 3000  # Розмір частини опису для Telegram
 
 # Глобальна змінна для зберігання активного чату для користувача
 # Формат: {user_id: ticket_id}
@@ -99,6 +102,115 @@ def get_ticket_type_ua(ticket_type: str) -> str:
     return type_translations.get(ticket_type, ticket_type)
 
 
+def escape_telegram_html(text: Optional[str]) -> str:
+    """Екранування тексту для parse_mode=HTML у Telegram."""
+    if not text:
+        return ''
+    return html.escape(str(text))
+
+
+def chunk_text(text: str, chunk_size: int = NOTE_CONTENT_CHUNK_SIZE) -> list[str]:
+    """Розбиття довгого тексту на частини з урахуванням переносів рядків."""
+    if not text:
+        return []
+    if len(text) <= chunk_size:
+        return [text]
+    chunks: list[str] = []
+    remaining = text
+    while remaining:
+        if len(remaining) <= chunk_size:
+            chunks.append(remaining)
+            break
+        cut = remaining.rfind('\n', 0, chunk_size)
+        if cut < chunk_size // 2:
+            cut = chunk_size
+        chunks.append(remaining[:cut].rstrip())
+        remaining = remaining[cut:].lstrip('\n')
+    return chunks
+
+
+def _format_note_commands_block(commands_raw: str) -> str:
+    """Формування HTML-блоку команд консолі для нотатки."""
+    import json
+    if not commands_raw:
+        return ''
+    block = '\n💻 <b>Команди консолі:</b>\n'
+    try:
+        if commands_raw.startswith('['):
+            commands_list = json.loads(commands_raw)
+            for cmd_obj in commands_list:
+                if isinstance(cmd_obj, dict) and cmd_obj.get('command'):
+                    desc = escape_telegram_html(cmd_obj.get('description', ''))
+                    cmd_text = escape_telegram_html(cmd_obj['command'])
+                    if desc:
+                        block += f'<i>{desc}</i>\n'
+                    block += f'<code>{cmd_text}</code>\n'
+        else:
+            for cmd in commands_raw.split('\n'):
+                if cmd.strip():
+                    block += f'<code>{escape_telegram_html(cmd.strip())}</code>\n'
+    except (json.JSONDecodeError, ValueError, AttributeError):
+        for cmd in commands_raw.split('\n'):
+            if cmd.strip():
+                block += f'<code>{escape_telegram_html(cmd.strip())}</code>\n'
+    return block
+
+
+def build_note_detail_message(note: Dict[str, Any], page: int = 0) -> tuple[str, int, int]:
+    """
+    Формування HTML-повідомлення для нотатки з пагінацією довгого опису.
+
+    Returns:
+        (текст повідомлення, поточна сторінка, загальна кількість сторінок)
+    """
+    title = escape_telegram_html(note.get('title', ''))
+    content_chunks = chunk_text(note.get('content') or '')
+    total_pages = max(1, len(content_chunks)) if content_chunks else 1
+    page = max(0, min(page, total_pages - 1))
+
+    page_suffix = f' <i>({page + 1}/{total_pages})</i>' if total_pages > 1 else ''
+    parts = [f'📄 <b>{title}</b>{page_suffix}\n']
+
+    if content_chunks:
+        parts.append(f'<pre>{escape_telegram_html(content_chunks[page])}</pre>\n')
+    elif page == 0:
+        parts.append('<i>Опис відсутній</i>\n')
+
+    is_first_page = page == 0
+    is_last_page = page == total_pages - 1
+
+    if is_first_page:
+        if note.get('resource_url'):
+            url = escape_telegram_html(note['resource_url'])
+            parts.append(f'🔗 <a href="{url}">Посилання на ресурс</a>\n\n')
+        if note.get('category'):
+            parts.append(f'📁 Категорія: {escape_telegram_html(note["category"])}\n')
+        if note.get('tags'):
+            parts.append(f'🏷️ Теги: {escape_telegram_html(note["tags"])}\n')
+
+    if is_last_page and note.get('commands'):
+        parts.append(_format_note_commands_block(note['commands']))
+
+    if is_last_page:
+        parts.append(
+            f'\n👤 Автор: {escape_telegram_html(note.get("author_name") or "Невідомо")}\n'
+            f'📅 Створено: {note["created_at"][:10] if note.get("created_at") else "Невідомо"}\n'
+            f'🔄 Оновлено: {note["updated_at"][:10] if note.get("updated_at") else "Невідомо"}'
+        )
+    elif total_pages > 1:
+        parts.append('\n<i>↔️ Використайте кнопки нижче для перегляду інших частин</i>')
+
+    message_text = ''.join(parts)
+    if len(message_text) > TELEGRAM_MESSAGE_LIMIT:
+        overflow = len(message_text) - TELEGRAM_MESSAGE_LIMIT + 80
+        if content_chunks and page < len(content_chunks):
+            trimmed = content_chunks[page][:-overflow] if overflow < len(content_chunks[page]) else content_chunks[page][:500]
+            parts[1] = f'<pre>{escape_telegram_html(trimmed)}</pre>\n'
+            parts.insert(2, '<i>⚠️ Текст скорочено. Повна версія — у веб-інтерфейсі бази знань.</i>\n')
+            message_text = ''.join(parts)[:TELEGRAM_MESSAGE_LIMIT]
+    return message_text, page, total_pages
+
+
 async def safe_edit_message_text(query, text: str, reply_markup=None, parse_mode='HTML', **kwargs):
     """
     Безпечне редагування повідомлення з обробкою застарілих queries
@@ -113,31 +225,43 @@ async def safe_edit_message_text(query, text: str, reply_markup=None, parse_mode
     Returns:
         True якщо успішно, False якщо query застарів
     """
+    if len(text) > TELEGRAM_MESSAGE_LIMIT:
+        text = text[:TELEGRAM_MESSAGE_LIMIT - 50] + '\n\n<i>⚠️ Повідомлення скорочено</i>'
     try:
         await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=parse_mode, **kwargs)
         return True
     except BadRequest as e:
         error_msg = str(e).lower()
         if 'query is too old' in error_msg or 'query id is invalid' in error_msg:
-            # Застарілий query - не логуємо як помилку
             try:
                 await query.answer("⏰ Запит застарів. Будь ласка, оновіть меню.", show_alert=False)
-            except:
+            except Exception:
                 pass
             return False
-        else:
-            # Інша помилка - логуємо
-            logger.log_error(f"Помилка редагування повідомлення: {e}")
+        if 'message is too long' in error_msg or "can't parse" in error_msg:
+            logger.log_error(f"Помилка Telegram (довжина/HTML): {e}")
             try:
-                await query.answer("❌ Помилка оновлення повідомлення.", show_alert=False)
-            except:
-                pass
-            return False
+                await query.message.reply_text(
+                    text[:TELEGRAM_MESSAGE_LIMIT - 100],
+                    reply_markup=reply_markup,
+                    parse_mode=parse_mode,
+                    **kwargs
+                )
+                return True
+            except Exception as reply_err:
+                logger.log_error(f"Помилка fallback reply_text: {reply_err}")
+        else:
+            logger.log_error(f"Помилка редагування повідомлення: {e}")
+        try:
+            await query.answer("❌ Помилка оновлення повідомлення.", show_alert=False)
+        except Exception:
+            pass
+        return False
     except Exception as e:
         logger.log_error(f"Помилка редагування повідомлення: {e}")
         try:
             await query.answer("❌ Помилка оновлення повідомлення.", show_alert=False)
-        except:
+        except Exception:
             pass
         return False
 
@@ -636,89 +760,84 @@ async def toggle_favorite_handler(update: Update, context: ContextTypes.DEFAULT_
         await update.callback_query.answer("❌ Помилка при зміні статусу закладки", show_alert=True)
 
 
-async def show_note_detail(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, note_id: int) -> None:
-    """Показ деталей нотатки"""
+async def show_note_detail(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user_id: int,
+    note_id: int,
+    page: int = 0,
+) -> None:
+    """Показ деталей нотатки (з пагінацією довгого опису для Telegram)."""
     try:
         knowledge_base_manager = get_knowledge_base_manager()
         note = knowledge_base_manager.get_note(note_id)
-        
+
         if not note:
             await safe_edit_message_text(update.callback_query, "❌ Нотатку не знайдено.")
             return
-        
-        # Перевіряємо права доступу
+
         with get_session() as session:
             user = session.query(User).filter(User.user_id == user_id).first()
             if not user or (not user.notifications_enabled and user.role != 'admin'):
                 await safe_edit_message_text(update.callback_query, "❌ У вас немає доступу до бази знань.")
                 return
-            
-            # Зберігаємо значення role до виходу з контексту сесії
             is_admin = user.role == 'admin'
-        
+
         can_edit = knowledge_base_manager.can_edit_note(note_id, user_id, is_admin)
-        
-        message_text = f"📄 <b>{note['title']}</b>\n\n"
-        
-        if note['content']:
-            message_text += f"{note['content']}\n\n"
-        
-        if note['resource_url']:
-            message_text += f"🔗 <a href=\"{note['resource_url']}\">Посилання на ресурс</a>\n\n"
-        
-        if note['category']:
-            message_text += f"📁 Категорія: {note['category']}\n"
-        
-        if note['tags']:
-            message_text += f"🏷️ Теги: {note['tags']}\n"
-        
-        if note['commands']:
-            message_text += f"\n💻 <b>Команди консолі:</b>\n"
-            try:
-                import json
-                # Спробуємо парсити як JSON
-                if note['commands'].startswith('['):
-                    commands_list = json.loads(note['commands'])
-                    for cmd_obj in commands_list:
-                        if isinstance(cmd_obj, dict) and cmd_obj.get('command'):
-                            cmd_text = cmd_obj['command']
-                            desc = cmd_obj.get('description', '')
-                            if desc:
-                                message_text += f"<i>{desc}</i>\n"
-                            message_text += f"<code>{cmd_text}</code>\n"
-                else:
-                    # Старий формат (просто текст)
-                    for cmd in note['commands'].split('\n'):
-                        if cmd.strip():
-                            message_text += f"<code>{cmd.strip()}</code>\n"
-            except (json.JSONDecodeError, ValueError, AttributeError):
-                # Якщо не вдалося парсити, використовуємо старий формат
-                for cmd in note['commands'].split('\n'):
-                    if cmd.strip():
-                        message_text += f"<code>{cmd.strip()}</code>\n"
-        
-        message_text += f"\n👤 Автор: {note['author_name'] or 'Невідомо'}\n"
-        message_text += f"📅 Створено: {note['created_at'][:10] if note['created_at'] else 'Невідомо'}\n"
-        message_text += f"🔄 Оновлено: {note['updated_at'][:10] if note['updated_at'] else 'Невідомо'}"
-        
+        message_text, page, total_pages = build_note_detail_message(note, page)
+
         keyboard_buttons = []
-        
-        # Кнопка закладок
+
+        if total_pages > 1:
+            nav_row = []
+            if page > 0:
+                nav_row.append(InlineKeyboardButton(
+                    "◀️ Попередня",
+                    callback_data=csrf_manager.add_csrf_to_callback_data(
+                        user_id, f"view_note_page:{note_id}:{page - 1}"
+                    ),
+                ))
+            if page < total_pages - 1:
+                nav_row.append(InlineKeyboardButton(
+                    "Наступна ▶️",
+                    callback_data=csrf_manager.add_csrf_to_callback_data(
+                        user_id, f"view_note_page:{note_id}:{page + 1}"
+                    ),
+                ))
+            if nav_row:
+                keyboard_buttons.append(nav_row)
+
         is_favorite = knowledge_base_manager.is_favorite(user_id, note_id)
         if is_favorite:
-            keyboard_buttons.append([InlineKeyboardButton("⭐ Видалити з обраних", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, f"toggle_favorite:{note_id}"))])
+            keyboard_buttons.append([InlineKeyboardButton(
+                "⭐ Видалити з обраних",
+                callback_data=csrf_manager.add_csrf_to_callback_data(user_id, f"toggle_favorite:{note_id}"),
+            )])
         else:
-            keyboard_buttons.append([InlineKeyboardButton("⭐ Додати в обрані", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, f"toggle_favorite:{note_id}"))])
-        
+            keyboard_buttons.append([InlineKeyboardButton(
+                "⭐ Додати в обрані",
+                callback_data=csrf_manager.add_csrf_to_callback_data(user_id, f"toggle_favorite:{note_id}"),
+            )])
+
         if can_edit:
-            keyboard_buttons.append([InlineKeyboardButton("🗑️ Видалити", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, f"delete_note:{note_id}"))])
-        
-        keyboard_buttons.append([InlineKeyboardButton("⬅️ Назад до списку", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "knowledge_base"))])
-        
+            keyboard_buttons.append([InlineKeyboardButton(
+                "🗑️ Видалити",
+                callback_data=csrf_manager.add_csrf_to_callback_data(user_id, f"delete_note:{note_id}"),
+            )])
+
+        keyboard_buttons.append([InlineKeyboardButton(
+            "⬅️ Назад до списку",
+            callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "knowledge_base"),
+        )])
+
         keyboard = InlineKeyboardMarkup(keyboard_buttons)
-        
-        await safe_edit_message_text(update.callback_query, message_text, reply_markup=keyboard, disable_web_page_preview=False)
-        
+        await safe_edit_message_text(
+            update.callback_query,
+            message_text,
+            reply_markup=keyboard,
+            disable_web_page_preview=True,
+        )
+
     except Exception as e:
         logger.log_error(f"Помилка в show_note_detail: {e}")
         await safe_edit_message_text(update.callback_query, "❌ Помилка при перегляді нотатки.")
@@ -1289,9 +1408,14 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     elif callback_data.startswith("knowledge_base_page:"):
         page = int(callback_data.split(":")[1])
         await knowledge_base_command(update, context, page=page)
+    elif callback_data.startswith("view_note_page:"):
+        parts = callback_data.split(":")
+        note_id = int(parts[1])
+        page = int(parts[2])
+        await show_note_detail(update, context, user_id, note_id, page=page)
     elif callback_data.startswith("view_note:"):
         note_id = int(callback_data.split(":")[1])
-        await show_note_detail(update, context, user_id, note_id)
+        await show_note_detail(update, context, user_id, note_id, page=0)
     elif callback_data == "create_note":
         await create_note_handler(update, context, user_id)
     elif callback_data.startswith("edit_note_info:"):

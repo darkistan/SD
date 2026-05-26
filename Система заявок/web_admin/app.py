@@ -3965,7 +3965,7 @@ def create_ticket():
     
     # GET - показуємо форму
     printer_manager = get_printer_manager()
-    printers = printer_manager.get_all_printers(active_only=True)
+    printers = printer_manager.get_all_printers(active_only=True, include_cartridges=True)
     
     # Визначаємо, чи дозволено обслуговування принтерів
     printer_service_enabled = True

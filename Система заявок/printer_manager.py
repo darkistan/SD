@@ -15,12 +15,13 @@ class PrinterManager:
         """Ініціалізація менеджера принтерів"""
         pass
     
-    def get_all_printers(self, active_only: bool = True) -> List[Dict[str, Any]]:
+    def get_all_printers(self, active_only: bool = True, include_cartridges: bool = False) -> List[Dict[str, Any]]:
         """
         Отримання всіх принтерів
         
         Args:
             active_only: Показувати тільки активні
+            include_cartridges: Додати назви сумісних картриджів
         
         Returns:
             Список принтерів
@@ -33,16 +34,24 @@ class PrinterManager:
                 
                 printers = query.order_by(Printer.model).all()
                 
-                return [
-                    {
+                result = []
+                for p in printers:
+                    item: Dict[str, Any] = {
                         'id': p.id,
                         'model': p.model,
                         'description': p.description,
                         'is_active': p.is_active,
-                        'created_at': p.created_at.isoformat() if p.created_at else None
+                        'created_at': p.created_at.isoformat() if p.created_at else None,
                     }
-                    for p in printers
-                ]
+                    if include_cartridges:
+                        names = [
+                            c.cartridge_type.name
+                            for c in p.compatibilities
+                            if c.cartridge_type
+                        ]
+                        item['cartridge_names'] = names
+                    result.append(item)
+                return result
         except Exception as e:
             logger.log_error(f"Помилка отримання принтерів: {e}")
             return []

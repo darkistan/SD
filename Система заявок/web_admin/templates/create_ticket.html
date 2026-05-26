@@ -60,7 +60,7 @@
                         <select name="printer_id" id="printerSelect" class="form-select">
                             <option value="">-- Виберіть принтер --</option>
                             {% for printer in printers %}
-                            <option value="{{ printer.id }}">{{ printer.model }}</option>
+                            <option value="{{ printer.id }}">{{ printer.model }}{% if printer.cartridge_names %} ({{ printer.cartridge_names | join(', ') }}){% endif %}</option>
                             {% endfor %}
                         </select>
                     </div>

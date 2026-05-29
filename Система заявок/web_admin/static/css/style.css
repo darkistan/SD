@@ -226,3 +226,58 @@ body {
         vertical-align: middle;
     }
 }
+
+/* Вислов дня на Dashboard */
+.daily-quote {
+    flex: 1 1 280px;
+    max-width: 520px;
+    padding: 0.75rem 1rem;
+    border-radius: 0.75rem;
+    background: linear-gradient(135deg, rgba(13, 110, 253, 0.12) 0%, rgba(111, 66, 193, 0.1) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    animation: dailyQuoteFadeIn 0.5s ease-out;
+}
+
+.daily-quote-preview {
+    max-width: 100%;
+}
+
+.daily-quote-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    opacity: 0.65;
+    margin-bottom: 0.35rem;
+}
+
+.daily-quote-label i {
+    margin-right: 0.25rem;
+}
+
+.daily-quote-text {
+    font-style: italic;
+    font-size: 0.95rem;
+    line-height: 1.45;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+@keyframes dailyQuoteFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (max-width: 767.98px) {
+    .daily-quote {
+        max-width: 100%;
+    }
+}

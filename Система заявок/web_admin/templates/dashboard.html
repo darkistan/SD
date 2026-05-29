@@ -6,9 +6,19 @@
 <link href="{{ url_for('static', filename='css/timers.css') }}" rel="stylesheet">
 <div class="row">
     <div class="col-12">
-        <h1 class="mb-4">
-            <i class="bi bi-speedometer2"></i> Dashboard
-        </h1>
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+            <h1 class="mb-0">
+                <i class="bi bi-speedometer2"></i> Dashboard
+            </h1>
+            {% if current_user.is_admin and quote_of_day %}
+            <div class="daily-quote">
+                <div class="daily-quote-label">
+                    <i class="bi bi-quote"></i> Вислов дня
+                </div>
+                <div class="daily-quote-text">{{ quote_of_day }}</div>
+            </div>
+            {% endif %}
+        </div>
     </div>
 </div>
 

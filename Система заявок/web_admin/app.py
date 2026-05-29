@@ -35,6 +35,7 @@ from task_manager import get_task_manager
 from timer_manager import get_timer_manager
 from backup_manager import get_backup_manager
 from knowledge_base_manager import get_knowledge_base_manager
+from daily_quotes import get_quote_of_day, get_quotes_text, CONFIG_KEY as DAILY_QUOTES_CONFIG_KEY
 from auth import auth_manager
 from logger import logger
 from app_version import APP_VERSION
@@ -493,6 +494,8 @@ def dashboard():
         else:
             ticket['chat_is_active'] = False
     
+    quote_of_day = get_quote_of_day() if current_user.is_admin else None
+
     return render_template('dashboard.html', 
                          tickets=tickets,
                          cartridge_stats=cartridge_stats,
@@ -500,7 +503,8 @@ def dashboard():
                          timers=timers,
                          purchase_lists=lists_with_items,
                          date_from=date_from.strftime('%Y-%m-%d'),
-                         date_to=date_to.strftime('%Y-%m-%d'))
+                         date_to=date_to.strftime('%Y-%m-%d'),
+                         quote_of_day=quote_of_day)
 
 
 @app.route('/tickets')
@@ -2601,6 +2605,16 @@ def set_todo_notification_header():
     return redirect(url_for('backup'))
 
 
+@app.route('/backup/set_daily_quotes', methods=['POST'])
+@admin_required
+def set_daily_quotes():
+    """Збереження висловів дня для Dashboard"""
+    quotes_text = request.form.get('quotes', '').strip()
+    set_bot_config(DAILY_QUOTES_CONFIG_KEY, quotes_text, description="Вислови дня для Dashboard")
+    flash('Вислови дня збережено.', 'success')
+    return redirect(url_for('backup'))
+
+
 @app.route('/users/<int:user_id>/toggle_notifications', methods=['POST'])
 @admin_required
 def toggle_user_notifications(user_id):
@@ -3532,7 +3546,9 @@ def backup():
         return render_template('backup.html',
                              settings=settings,
                              backups=backups,
-                             todo_notification_header=_todo_header_for_display(get_bot_config("todo_morning_notification_header") or "Задачи на сегодня"))
+                             todo_notification_header=_todo_header_for_display(get_bot_config("todo_morning_notification_header") or "Задачи на сегодня"),
+                             daily_quotes_text=get_quotes_text(),
+                             quote_of_day=get_quote_of_day())
     except Exception as e:
         logger.log_error(f"Помилка завантаження сторінки резервного копіювання: {e}")
         flash('Помилка завантаження сторінки резервного копіювання.', 'danger')

@@ -98,6 +98,34 @@
     </div>
 </div>
 
+<!-- Вислови дня для Dashboard -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5><i class="bi bi-quote"></i> Вислови дня (Dashboard)</h5>
+    </div>
+    <div class="card-body">
+        <p class="text-muted">Один вислов — один рядок. Щодня на Dashboard показується наступний по черзі (лише для адміністраторів).</p>
+        {% if quote_of_day %}
+        <div class="daily-quote daily-quote-preview mb-3">
+            <div class="daily-quote-label">
+                <i class="bi bi-eye"></i> Зараз на Dashboard
+            </div>
+            <div class="daily-quote-text">{{ quote_of_day }}</div>
+        </div>
+        {% endif %}
+        <form method="POST" action="{{ url_for('set_daily_quotes') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <div class="mb-3">
+                <label class="form-label" for="daily_quotes">Список висловів</label>
+                <textarea class="form-control font-monospace" id="daily_quotes" name="quotes" rows="12" placeholder="Один вислов на рядок">{{ daily_quotes_text }}</textarea>
+            </div>
+            <button type="submit" class="btn btn-primary">
+                <i class="bi bi-save"></i> Зберегти вислови
+            </button>
+        </form>
+    </div>
+</div>
+
 <!-- Інформація про резервне копіювання -->
 <div class="card mb-4">
     <div class="card-header">

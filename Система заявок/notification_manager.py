@@ -14,6 +14,8 @@ load_dotenv("config.env")
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}" if TELEGRAM_BOT_TOKEN else None
+OVERDUE_TASKS_HEADER = "Просроченные задачи"
+TELEGRAM_MESSAGE_LIMIT = 4096
 
 
 class NotificationManager:
@@ -410,70 +412,123 @@ class NotificationManager:
             logger.log_error(f"Помилка відправки оповіщення про новий запит на доступ: {e}")
             return False
     
+    def _normalize_today_header(self, header_text: Optional[str]) -> str:
+        """Нормалізує заголовок блоку «задачі на сьогодні»."""
+        raw_header = (header_text or "Задачи на сегодня").strip()
+        if raw_header in ("Завдання на сьогодні", "Завдання на сьогодні:"):
+            raw_header = "Задачи на сегодня"
+        return raw_header[:200] if len(raw_header) > 200 else raw_header
+
+    @staticmethod
+    def _format_task_due_date(due_date: Optional[str]) -> Optional[str]:
+        """Форматує due_date ISO у ДД.ММ.РРРР."""
+        if not due_date:
+            return None
+        try:
+            from datetime import datetime
+            normalized = due_date.replace("Z", "+00:00")
+            if "T" in normalized:
+                return datetime.fromisoformat(normalized).strftime("%d.%m.%Y")
+            return datetime.strptime(normalized[:10], "%Y-%m-%d").strftime("%d.%m.%Y")
+        except (ValueError, TypeError):
+            return due_date[:10] if len(due_date) >= 10 else None
+
+    def _format_task_line(self, task: dict, show_due_date: bool = False) -> str:
+        """Форматує один рядок задачі для ранкового звіту."""
+        list_name = task.get("list_name", "")
+        title = task.get("title", "Без названия")
+        notes = task.get("notes", "")
+
+        if list_name:
+            line = f"[{list_name}] {title}"
+        else:
+            line = title
+
+        if notes:
+            line += f" — {notes[:50]}{'...' if len(notes) > 50 else ''}"
+
+        if show_due_date:
+            due_fmt = self._format_task_due_date(task.get("due_date"))
+            if due_fmt:
+                line += f" — до {due_fmt}"
+
+        return line + "\n"
+
+    def _build_morning_todo_message(
+        self,
+        today_tasks: list,
+        overdue_tasks: list,
+        header_text: Optional[str] = None,
+    ) -> str:
+        """Збирає текст ранкового звіту з блоками «сьогодні» та «просроченные»."""
+        parts: list[str] = []
+
+        if today_tasks:
+            header = self._normalize_today_header(header_text)
+            parts.append(f"📋 <b>{header}</b>\n\n")
+            for task in today_tasks:
+                parts.append(self._format_task_line(task))
+
+        if overdue_tasks:
+            if parts:
+                parts.append("\n")
+            parts.append(f"⚠️ <b>{OVERDUE_TASKS_HEADER}</b>\n\n")
+            for task in overdue_tasks:
+                parts.append(self._format_task_line(task, show_due_date=True))
+
+        message = "".join(parts).rstrip()
+        if len(message) > TELEGRAM_MESSAGE_LIMIT:
+            message = message[: TELEGRAM_MESSAGE_LIMIT - 20].rstrip() + "\n…"
+        return message
+
     def send_todo_tasks_notification(
         self,
         user_id: int,
         tasks: list,
-        header_text: Optional[str] = None
+        header_text: Optional[str] = None,
+        overdue_tasks: Optional[list] = None,
     ) -> bool:
         """
-        Відправка ранкового звіту про завдання на сьогодні
-        
+        Відправка ранкового звіту про завдання на сьогодні та просроченные.
+
         Args:
             user_id: ID користувача
             tasks: Список завдань на сьогодні
-            header_text: Текст шапки повідомлення (за замовчуванням «Задачи на сегодня»)
-            
+            header_text: Текст шапки блоку «на сьогодні»
+            overdue_tasks: Список просроченных завдань
+
         Returns:
             True якщо уведомлення відправлено
         """
         if not TELEGRAM_BOT_TOKEN:
             return False
-        
-        if not tasks:
-            # Якщо завдань немає, не відправляємо повідомлення
+
+        today_tasks = tasks or []
+        overdue_list = overdue_tasks or []
+        if not today_tasks and not overdue_list:
             return False
-        
-        # Нормалізація: старий український заголовок зберігаємо як російський
-        raw_header = (header_text or "Задачи на сегодня").strip()
-        if raw_header in ("Завдання на сьогодні", "Завдання на сьогодні:"):
-            raw_header = "Задачи на сегодня"
-        header = raw_header[:200] if len(raw_header) > 200 else raw_header
-        message = f"📋 <b>{header}</b>\n\n"
-        
-        for task in tasks:
-            list_name = task.get('list_name', '')
-            title = task.get('title', 'Без названия')
-            notes = task.get('notes', '')
-            
-            if list_name:
-                message += f"[{list_name}] {title}"
-            else:
-                message += title
-            
-            if notes:
-                message += f" — {notes[:50]}{'...' if len(notes) > 50 else ''}"
-            
-            message += "\n"
-        
+
+        message = self._build_morning_todo_message(today_tasks, overdue_list, header_text)
+
         try:
             response = requests.post(
                 f"{TELEGRAM_API_URL}/sendMessage",
                 json={
-                    'chat_id': user_id,
-                    'text': message,
-                    'parse_mode': 'HTML'
+                    "chat_id": user_id,
+                    "text": message,
+                    "parse_mode": "HTML",
                 },
-                timeout=10
+                timeout=10,
             )
-            
+
             if response.status_code == 200:
                 logger.log_info(f"Ранковий звіт про завдання відправлено користувачу {user_id}")
                 return True
-            else:
-                logger.log_warning(f"Помилка відправки ранкового звіту користувачу {user_id}: {response.text}")
-                return False
-                
+            logger.log_warning(
+                f"Помилка відправки ранкового звіту користувачу {user_id}: {response.text}"
+            )
+            return False
+
         except Exception as e:
             logger.log_error(f"Помилка відправки ранкового звіту: {e}")
             return False

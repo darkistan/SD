@@ -2769,15 +2769,17 @@ def main():
                         continue
                     
                     today_tasks = task_manager.get_tasks_for_today()
-                    if not today_tasks:
+                    overdue_tasks = task_manager.get_overdue_tasks()
+                    if not today_tasks and not overdue_tasks:
                         continue
-                    
+
                     for user in to_notify:
                         try:
                             notification_manager.send_todo_tasks_notification(
                                 user_id=user.user_id,
                                 tasks=today_tasks,
-                                header_text=header_text
+                                header_text=header_text,
+                                overdue_tasks=overdue_tasks,
                             )
                         except Exception as e:
                             logger.log_error(f"Помилка відправки ранкового звіту користувачу {user.user_id}: {e}")
